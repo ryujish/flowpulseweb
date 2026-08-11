@@ -627,8 +627,7 @@ function MarketDashboard({
               <article className={`market-index us-leader ${stock.changeRate >= 0 ? "stock-up" : "stock-down"}`} key={stock.code}>
                 <small>{stock.name}</small>
                 <strong>${stock.price.toLocaleString("en-US")}</strong>
-                <span>전일 대비</span><b className={stock.changeRate >= 0 ? "up" : "down"}>{stock.changeRate >= 0 ? "+" : ""}{stock.changeRate.toFixed(2)}%</b>
-                {stock.preMarketPrice && <><span>Pre-Market</span><b className={stock.preMarketChangeRate! >= 0 ? "up" : "down"}>${stock.preMarketPrice.toLocaleString("en-US")} · {stock.preMarketChangeRate! >= 0 ? "+" : ""}{stock.preMarketChangeRate!.toFixed(2)}%</b></>}
+                <div className="market-moves"><span>전일 대비<b className={stock.changeRate >= 0 ? "up" : "down"}>{stock.changeRate >= 0 ? "+" : ""}{stock.changeRate.toFixed(2)}%</b></span><span>프리장 시작 대비<b className={(stock.preMarketChangeRate ?? stock.changeRate) >= 0 ? "up" : "down"}>{(stock.preMarketChangeRate ?? stock.changeRate) >= 0 ? "+" : ""}{(stock.preMarketChangeRate ?? stock.changeRate).toFixed(2)}%</b></span></div>
               </article>
             ) : (
               <article key={stock.code} className={`leader-flow ${stock.changeRate >= 0 ? "stock-up" : "stock-down"}`}>
@@ -753,7 +752,7 @@ export default function App() {
         <b>FlowPulse <i>AI</i></b>
         <nav>
           {(["Flow", "AI", "Watch", "Feed", "Me"] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
+              <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
               {t === "Flow" ? <Home /> : t === "AI" ? <Search /> : t === "Watch" ? <Heart /> : t === "Feed" ? <MessageSquare /> : <UserRound />}
               <span>{t === "Flow" ? "Flow" : t === "AI" ? "종목" : t === "Watch" ? "관심 종목" : t === "Feed" ? "Feed" : "Me"}</span>
             </button>

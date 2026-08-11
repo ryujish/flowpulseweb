@@ -113,7 +113,7 @@ export async function publicUsOverview() {
     indices = normalizePublicUsIndices(rows),
     leaders = (await Promise.all([["SOXL", "SOXL", "SOXL.A"], ["KORU", "KORU", "KORU.A"], ["SNDK", "SanDisk", "SNDK.O"]].map(async ([code, name, reutersCode]) => {
       const payload = await fetch(`https://polling.finance.naver.com/api/realtime/worldstock/stock/${reutersCode}`).then((response) => response.ok ? response.json() : Promise.reject()).catch(() => ({})), data = payload.datas?.[0] ?? {};
-      return { code, name, price: normalizeNumber(data.closePrice ?? data.price), changeRate: normalizeNumber(data.fluctuationsRatio), personal: 0, foreign: 0, institution: 0, program: 0 };
+      return { code, name, price: normalizeNumber(data.closePrice ?? data.price), changeRate: normalizeNumber(data.fluctuationsRatio), ...normalizePreMarket(data), personal: 0, foreign: 0, institution: 0, program: 0 };
     }))).filter((stock) => stock.price > 0);
   return { live: true, source: "네이버 실시간 폴백", asOf: new Date().toISOString(), market: "NASDAQ", indices, leaders };
 }
