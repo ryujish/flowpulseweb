@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { health, migrate, pool, readMarket } from "./db.mjs";
 import { accurateHistoryStart } from "./session.mjs";
-import { configured, KisClient, publicUsOverview, selectCandidateStrategies } from "./kis.mjs";
+import { configured, KisClient, publicUsOverview, resetLeaderFlows, searchUsStocks, selectCandidateStrategies } from "./kis.mjs";
 
 const port = Number(process.env.FLOWPULSE_API_PORT) || 8789,
   json = (res, status, body) => {
@@ -36,7 +36,7 @@ function responseWithHistory(market, rows) {
   }
   const investorPoints = rows.map(({ capturedAt, payload }) => ({ time: capturedAt, ...payload.snapshot })),
     programPoints = investorPoints.map((point) => ({ time: point.time, value: point.program }));
-  return { ...latest, investorPoints, programPoints, collection: { intervalSeconds: 60, stored: rows.length, maxStored: 7 * 24 * 60, lastStoredAt: rows.at(-1).capturedAt } };
+  return { ...latest, leaders:resetLeaderFlows(latest.leaders, rows[0].payload.leaders), investorPoints, programPoints, collection: { intervalSeconds: 60, stored: rows.length, maxStored: 7 * 24 * 60, lastStoredAt: rows.at(-1).capturedAt } };
 }
 
 await migrate();
@@ -48,6 +48,10 @@ createServer(async (req, res) => {
       if (!configured()) return json(res, 503, { live:false, message:"KIS 설정이 필요합니다." });
       if (Date.now()-candidateCache.savedAt>60000 && !candidateRefresh) candidateRefresh=refreshCandidates();
       return json(res, 200, candidateCache.body);
+    }
+    if (url.pathname === "/api/stocks/search") {
+      const query=url.searchParams.get("q")?.trim();
+      return json(res, 200, query ? await searchUsStocks(query) : []);
     }
     if (url.pathname !== "/api/market/flow") return json(res, 404, { message: "Not found" });
     const requested = url.searchParams.get("market"), market = requested === "KOSDAQ" || requested === "NASDAQ" ? requested : "KOSPI",

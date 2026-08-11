@@ -17,7 +17,10 @@ test("국내 수급 차트는 수정 로직 적용 시각 이후 데이터만 �
 });
 
 test("시장 개장 판정은 서버 시간대와 무관하다", () => {
+  assert.equal(marketIsOpen("KOSPI", new Date("2026-08-10T22:59:00Z")), false);
+  assert.equal(marketIsOpen("KOSPI", new Date("2026-08-10T23:00:00Z")), true);
   assert.equal(marketIsOpen("KOSPI", new Date("2026-08-11T04:30:00Z")), true);
+  assert.equal(marketIsOpen("KOSPI", new Date("2026-08-11T10:59:00Z")), true);
   assert.equal(marketIsOpen("KOSPI", new Date("2026-08-11T11:30:00Z")), false);
   assert.equal(marketIsOpen("NASDAQ", new Date("2026-08-11T14:30:00Z")), true);
   assert.equal(marketIsOpen("NASDAQ", new Date("2026-08-11T04:30:00Z")), false);

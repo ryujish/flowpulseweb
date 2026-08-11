@@ -25,6 +25,7 @@ export function normalizePreMarket(data = {}, regularPrice = 0) {
 }
 export function normalizeFlow(investors = [], program = []) {
   const latest = investors[0] ?? {},
+    investorAvailable = [latest.frgn_ntby_tr_pbmn,latest.prsn_ntby_tr_pbmn,latest.orgn_ntby_tr_pbmn].some((value)=>normalizeNumber(value)!==0),
     snapshot = {
       foreign: normalizeNumber(latest.frgn_ntby_tr_pbmn),
       personal: normalizeNumber(latest.prsn_ntby_tr_pbmn),
@@ -41,7 +42,7 @@ export function normalizeFlow(investors = [], program = []) {
         };
       })
       .reverse();
-  return { snapshot, programPoints };
+  return { snapshot, programPoints, investorAvailable };
 }
 export function normalizePrice(output = {}) {
   return {
@@ -71,6 +72,13 @@ export function normalizeInvestorQuantity(investor = {}) {
     foreign: normalizeNumber(investor.frgn_ntby_qty),
     institution: normalizeNumber(investor.orgn_ntby_qty),
   };
+}
+export function resetLeaderFlows(latest = [], opening = []) {
+  return latest.map((stock) => {
+    const base = opening.find((item) => item.code === stock.code) ?? {};
+    const unavailable = stock.investorAvailable === false;
+    return { ...stock, personal:unavailable?0:stock.personal-(base.personal??stock.personal), foreign:unavailable?0:stock.foreign-(base.foreign??stock.foreign), institution:unavailable?0:stock.institution-(base.institution??stock.institution), program:stock.program-(base.program??stock.program) };
+  });
 }
 export function normalizeRank(rows = [], market = "KOSPI") {
   return rows.flatMap((row) => {
@@ -125,6 +133,14 @@ export async function publicUsOverview() {
       return { code, name, price, changeRate: normalizeNumber(data.fluctuationsRatio), ...normalizePreMarket(data, price), personal: 0, foreign: 0, institution: 0, program: 0 };
     }))).filter((stock) => stock.price > 0);
   return { live: true, source: "네이버 실시간 폴백", asOf: new Date().toISOString(), market: "NASDAQ", indices, leaders };
+}
+export async function searchUsStocks(query) {
+  const autocomplete = await fetch(`https://ac.stock.naver.com/ac?q=${encodeURIComponent(query)}&target=stock`).then((response) => response.ok ? response.json() : Promise.reject(new Error(`미국 종목 검색 실패 (${response.status})`))),
+    items = (autocomplete.items ?? []).filter((item) => item.nationCode === "USA").slice(0, 6);
+  return Promise.all(items.map(async (item) => {
+    const payload = await fetch(`https://polling.finance.naver.com/api/realtime/worldstock/stock/${encodeURIComponent(item.reutersCode)}`).then((response) => response.ok ? response.json() : Promise.reject(new Error(`미국 종목 시세 실패 (${response.status})`))), data = payload.datas?.[0] ?? {};
+    return { code:item.code, name:item.name, market:item.typeName ?? "미국", price:normalizeNumber(data.closePrice ?? data.price), changeRate:normalizeNumber(data.fluctuationsRatio), personal:0, foreign:0, institution:0, program:0 };
+  }));
 }
 export class KisClient {
   #token = null;
@@ -244,8 +260,8 @@ export class KisClient {
       const [investorBody, programBody, chartBody] = await Promise.all([
         this.get("/uapi/domestic-stock/v1/quotations/inquire-investor", "FHKST01010900", { FID_COND_MRKT_DIV_CODE:"J", FID_INPUT_ISCD:stock.code }).catch(()=>({output:[]})),
         this.get("/uapi/domestic-stock/v1/quotations/program-trade-by-stock", "FHPPG04650101", { FID_COND_MRKT_DIV_CODE:"UN", FID_INPUT_ISCD:stock.code }).catch(()=>({output:[]})),
-        this.get("/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice", "FHKST03010200", { FID_ETC_CLS_CODE:"", FID_COND_MRKT_DIV_CODE:"J", FID_INPUT_ISCD:stock.code, FID_INPUT_HOUR_1:new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Seoul",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date()).replaceAll(":",""), FID_PW_DATA_INCU_YN:"Y" }).catch(()=>({output2:[]})),
-      ]), investor = investorBody.output?.find(row=>normalizeNumber(row.prsn_ntby_qty)||normalizeNumber(row.frgn_ntby_qty)||normalizeNumber(row.orgn_ntby_qty)) ?? investorBody.output?.[0] ?? {},
+        this.get("/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice", "FHKST03010200", { FID_ETC_CLS_CODE:"", FID_COND_MRKT_DIV_CODE:"UN", FID_INPUT_ISCD:stock.code, FID_INPUT_HOUR_1:new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Seoul",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date()).replaceAll(":",""), FID_PW_DATA_INCU_YN:"Y" }).catch(()=>({output2:[]})),
+      ]), investor = investorBody.output?.[0] ?? {},
         closes=(chartBody.output2??[]).map(row=>normalizeNumber(row.stck_prpr)).filter(Boolean).reverse(), indicator=calculateCciEma(closes),
         current=closes.at(-1),previous=closes.at(-2),currentMean=closes.slice(-20).reduce((sum,value)=>sum+value,0)/20,previousMean=closes.slice(-21,-1).reduce((sum,value)=>sum+value,0)/20;
       stocks.push({ ...stock, ...normalizeInvestorQuantity(investor), program:normalizeNumber(programBody.output?.[0]?.whol_smtn_ntby_tr_pbmn)/1000000, cci:indicator?.cci??null, cciEma:indicator?.ema??null, cciCross:indicator?.crossedUp??false, envelopeReentry:Boolean(closes.length>=21&&previous<=previousMean*.98&&current>currentMean*.98) });
@@ -273,7 +289,7 @@ export class KisClient {
           this.get(
             "/uapi/domestic-stock/v1/quotations/inquire-price",
             "FHKST01010100",
-            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+            { FID_COND_MRKT_DIV_CODE: "UN", FID_INPUT_ISCD: code },
           ),
           this.get(
             "/uapi/domestic-stock/v1/quotations/inquire-investor",
@@ -287,15 +303,14 @@ export class KisClient {
           ).catch(() => ({ output: [] })),
         ]),
         price = normalizePrice(priceBody.output ?? {}),
-        investor = investorBody.output?.find((row) =>
-          normalizeNumber(row.prsn_ntby_qty) || normalizeNumber(row.frgn_ntby_qty) || normalizeNumber(row.orgn_ntby_qty),
-        ) ?? investorBody.output?.[0] ?? {},
+        investor = investorBody.output?.[0] ?? {},
         stockProgram = programBody.output?.[0] ?? {};
       leaders.push({
         code,
         name,
         ...price,
         ...normalizeInvestorQuantity(investor),
+        investorAvailable: [investor.prsn_ntby_qty,investor.frgn_ntby_qty,investor.orgn_ntby_qty].some((value)=>normalizeNumber(value)!==0),
         program: normalizeNumber(stockProgram.whol_smtn_ntby_tr_pbmn) / 1000000,
       });
     }

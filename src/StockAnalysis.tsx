@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, Check, Download, Search, Star, X } from "lucide-react";
 import { toPng } from "html-to-image";
 import "./stock-analysis.css";
@@ -29,7 +29,8 @@ const playbooks:Record<string,[string,string]> = {
 };
 
 export default function StockAnalysis({stocks=[],candidateMeta,observedCodes=[],favoriteCodes=[],onWatch,onOpenWatch,onFavorite}:{stocks?:SearchableStock[];candidateMeta?:{universeCount:number;priceCount:number;calculatedAt?:string};observedCodes?:string[];favoriteCodes?:string[];onWatch?:(stock:SearchableStock)=>void;onOpenWatch?:()=>void;onFavorite?:(stock:SearchableStock)=>void}) {
-  const available = [...stocks,...fallbackStocks.filter(stock=>!stocks.some(candidate=>candidate.code===stock.code))],
+  const [usStocks,setUsStocks] = useState<SearchableStock[]>([]),
+    available = [...stocks,...fallbackStocks.filter(stock=>!stocks.some(candidate=>candidate.code===stock.code)),...usStocks],
     captureRef = useRef<HTMLDivElement>(null), [capturing,setCapturing] = useState(false),
     [screen,setScreen] = useState<"candidates"|"analysis">("candidates"), [sheetOpen,setSheetOpen] = useState(false),
     [candidateFilter,setCandidateFilter] = useState("전체"),
@@ -58,6 +59,13 @@ export default function StockAnalysis({stocks=[],candidateMeta,observedCodes=[],
         link.download = `FlowPulse-${selected.code}-${new Date().toISOString().slice(0,10)}.png`; link.href = url; link.click();
       } finally { setCapturing(false); }
     };
+  useEffect(()=>{
+    const term=query.trim();
+    if(!term){setUsStocks([]);return;}
+    const controller=new AbortController(), timer=setTimeout(()=>fetch(`/api/stocks/search?q=${encodeURIComponent(term)}`,{signal:controller.signal}).then(response=>response.ok?response.json():[]).then(setUsStocks).catch(()=>{}),250);
+    return ()=>{clearTimeout(timer);controller.abort();};
+  },[query]);
+  const priceText=(stock:SearchableStock)=>stock.market.includes("미국")||["나스닥","뉴욕","아멕스"].some(name=>stock.market.includes(name))?`$${stock.price.toLocaleString("en-US")}`:`${stock.price.toLocaleString("ko-KR")}원`;
   return <div className="stock-analysis" ref={captureRef}>
     <header className="stock-header"><div><small>STOCK ANALYSIS</small><h1>종목 분석</h1></div><div className="stock-header-actions"><span><b>● 정상 수집</b> · 10:24 기준</span><button className="capture-button" onClick={capture} disabled={capturing} aria-label="화면 저장"><Download/></button></div></header>
     <div className="stock-mode-tabs" role="tablist"><button role="tab" aria-selected={screen==="candidates"} className={screen==="candidates"?"active":""} onClick={()=>setScreen("candidates")}>관찰 후보</button><button role="tab" aria-selected={screen==="analysis"} className={screen==="analysis"?"active":""} onClick={()=>setScreen("analysis")}>종목 검색</button></div>
@@ -75,8 +83,8 @@ export default function StockAnalysis({stocks=[],candidateMeta,observedCodes=[],
       })}</div>
       {!candidateStocks.length&&<div className="candidate-empty">현재 조건을 충족한 관찰 후보가 없습니다.<small>기준을 낮추지 않고 다음 갱신을 기다립니다.</small></div>}<small className="candidate-note">후보 점수는 기대수익률이나 상승 확률이 아닌 관찰 우선순위입니다.</small>
     </section> : <>
-    <div className="stock-search"><div className="stock-search-row"><label><Search/><input aria-label="종목명 또는 종목코드 검색" placeholder="종목명 또는 종목코드 검색" value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"&&results[0]) choose(results[0]);}}/></label><button className={favoriteCodes.includes(selected.code)?"favorite active":"favorite"} onClick={()=>onFavorite?.(selected)} aria-label={favoriteCodes.includes(selected.code)?"일반 관심 해제":"일반 관심 등록"}><Star fill={favoriteCodes.includes(selected.code)?"currentColor":"none"}/></button></div>{query&&<div className="stock-search-results">{results.length?results.map(stock=><button key={stock.code} onClick={()=>choose(stock)}><span><b>{stock.name}</b><small>{stock.code} · {stock.market}</small></span><span>{stock.price.toLocaleString("ko-KR")}원 <small>{stock.changeRate>=0?"▲":"▼"}{Math.abs(stock.changeRate).toFixed(2)}%</small></span></button>):<p>일치하는 종목을 찾을 수 없습니다. 종목명 또는 6자리 코드를 확인해 주세요.</p>}</div>}</div>
-    <div className="stock-price"><div><small>{selected.name} · {selected.code} · {selected.market}</small><strong>{selected.price.toLocaleString("ko-KR")}원</strong></div><span className={selected.changeRate>=0?"up":"down"}>{selected.changeRate>=0?"▲":"▼"}{Math.abs(selected.changeRate).toFixed(2)}%</span></div>
+    <div className="stock-search"><div className="stock-search-row"><label><Search/><input aria-label="국내·미국 종목명 또는 종목코드 검색" placeholder="국내·미국 종목명 또는 종목코드 검색" value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"&&results[0]) choose(results[0]);}}/></label><button className={favoriteCodes.includes(selected.code)?"favorite active":"favorite"} onClick={()=>onFavorite?.(selected)} aria-label={favoriteCodes.includes(selected.code)?"일반 관심 해제":"일반 관심 등록"}><Star fill={favoriteCodes.includes(selected.code)?"currentColor":"none"}/></button></div>{query&&<div className="stock-search-results">{results.length?results.map(stock=><button key={`${stock.market}-${stock.code}`} onClick={()=>choose(stock)}><span><b>{stock.name}</b><small>{stock.code} · {stock.market}</small></span><span>{priceText(stock)} <small>{stock.changeRate>=0?"▲":"▼"}{Math.abs(stock.changeRate).toFixed(2)}%</small></span></button>):<p>일치하는 국내·미국 종목을 찾을 수 없습니다.</p>}</div>}</div>
+    <div className="stock-price"><div><small>{selected.name} · {selected.code} · {selected.market}</small><strong>{priceText(selected)}</strong></div><span className={selected.changeRate>=0?"up":"down"}>{selected.changeRate>=0?"▲":"▼"}{Math.abs(selected.changeRate).toFixed(2)}%</span></div>
     <section className="stock-surface playbook-summary"><header><div><small>PROGRAM DIP REVERSAL · v1.0</small><h2>{selected.name} · {verdict}</h2></div><span>{bullish?"확인 대기":"주의 관찰"}</span></header><p>{verdictCopy}</p><div className="playbook-metrics"><div><span>Flow Shift</span><strong>{bullish?"매도 → 매수 탐색":"매수 → 매도 전환"}</strong></div><div><span>Flow Sync</span><strong>{bullish?"+32 · 약한 매수 동조":"-41 · 매도 우위"}</strong></div><div><span>Flow Confidence</span><strong>78 / 100</strong></div><div><span>Flow Divergence</span><strong>{selected.changeRate<0&&bullish?"가격↓ / 프로그램↑":"방향 확인 중"}</strong></div><div><span>Flow Persistence</span><strong>{bullish?"매수 18분":"매도 7분"}</strong></div><div><span>Flow Acceleration</span><strong>최근 5분 {bullish?"매수 유지":"매도 강화"}</strong></div></div><div className="condition-progress"><div><span>확인 조건 3개 중 2개 충족</span><b>다음 · 직전 5분봉 고가 돌파</b></div><progress max="3" value="2"/></div><small>데이터와 신호의 신뢰도이며 상승 또는 수익 확률이 아닙니다.</small><div className="playbook-actions"><button onClick={()=>onFavorite?.(selected)}>{favoriteCodes.includes(selected.code)?"관심 등록됨":"일반 관심 등록"}</button><button onClick={()=>startObservation(selected)}>{observed?"관찰 중 · 관심 종목 보기":"관찰 시작"}</button></div></section>
     <div className="stock-tabs" role="tablist">{(["판단 근거","수급 분석","가격·수급 차트"] as StockView[]).map(item=><button role="tab" aria-selected={view===item} className={view===item?"active":""} onClick={()=>setView(item)} key={item}>{item}</button>)}</div>
 

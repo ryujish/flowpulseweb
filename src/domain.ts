@@ -18,6 +18,7 @@ export type MarketFlow = {
   asOf?: string;
   market?: string;
   snapshot?: Omit<FlowPoint, "time">;
+  investorAvailable?: boolean;
   investorPoints?: FlowPoint[];
   programPoints?: ProgramPoint[];
   index?: {
@@ -37,6 +38,7 @@ export type MarketFlow = {
     foreign: number;
     institution: number;
     program: number;
+    investorAvailable?: boolean;
     preMarketPrice?: number;
     preMarketChangeRate?: number;
   }>;

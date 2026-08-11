@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   BrainCircuit,
+  ChartNoAxesCombined,
   Clock3,
   Download,
   Home,
@@ -46,37 +47,20 @@ function useMarkets() {
     });
   useEffect(() => {
     let cancelled = false;
-    const wait = (ms: number) =>
-        new Promise((resolve) => setTimeout(resolve, ms)),
-      fetchOne = async (value: Market) => {
-        while (!cancelled)
-          try {
-            const response = await fetch(`/api/market/flow?market=${value}`),
-              body = await response.json();
-            if (response.ok && body.live && body.market === value) {
-              setMarkets((current) => ({ ...current, [value]: body }));
-              setLoading((current) => ({ ...current, [value]: false }));
-              return;
-            }
-            await wait(body.retryAfterMs ?? 2000);
-          } catch {
-            await wait(2000);
+    const fetchOne = async (value: Market) => {
+        try {
+          const response = await fetch(`/api/market/flow?market=${value}`), body = await response.json();
+          if (!cancelled && response.ok && body.live && body.market === value) {
+            setMarkets((current) => ({ ...current, [value]: body }));
+            setLoading((current) => ({ ...current, [value]: false }));
           }
-      };
-    (async () => {
-      while (!cancelled) {
-        await fetchOne("KOSPI");
-        if (cancelled) return;
-        await wait(1500);
-        await fetchOne("NASDAQ");
-        if (cancelled) return;
-        await wait(1500);
-        await fetchOne("KOSDAQ");
-        await wait(60000);
-      }
-    })();
+        } catch {}
+      }, load=()=>Promise.all((["KOSPI","NASDAQ","KOSDAQ"] as Market[]).map(fetchOne));
+    load();
+    const timer=setInterval(load,15000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, []);
   return {
@@ -124,9 +108,11 @@ function IndexChart({ indices = [] }: { indices?: MarketFlow["indices"] }) {
 function Chart({
   investors,
   program,
+  investorAvailable = true,
 }: {
   investors: MarketFlow["investorPoints"];
   program: ProgramPoint[];
+  investorAvailable?: boolean;
 }) {
   const w = 600,
     h = 300,
@@ -184,12 +170,12 @@ function Chart({
         points: sortedProgram,
         values: sortedProgram.map((p) => p.value),
       },
-    ],
+    ].filter((item)=>investorAvailable||item.name==="프로그램"),
     investorScale = Math.max(
       1,
-      ...series.slice(0, 3).flatMap((item) => item.values.map(Math.abs)),
+      ...sortedInvestors.flatMap((point) => [point.foreign,point.personal,point.institution].map(Math.abs)),
     ),
-    programScale = Math.max(1, ...series[3].values.map(Math.abs)),
+    programScale = Math.max(1, ...sortedProgram.map((point)=>Math.abs(point.value))),
     y = (value: number, scale: number) =>
       top + ((scale - value) / (scale * 2)) * (h - top - bottom),
     path = (values: number[], points: { time: string }[], scale: number) =>
@@ -262,7 +248,7 @@ function Chart({
           </g>
         ))}
         {series.map((item, index) => {
-          const scale = index === 3 ? programScale : investorScale;
+          const scale = item.name === "프로그램" ? programScale : investorScale;
           return (
             <g key={item.name}>
               <path
@@ -282,9 +268,9 @@ function Chart({
           </span>
         ))}
       </div>
-      {(investors?.length ?? 0) < 2 && (
+      {!investorAvailable && (
         <small className="collecting">
-          외국인·개인·기관은 KRX 기준이며 지금부터 1분 간격으로 수집합니다.
+          개인·외국인·기관은 NXT에서 미제공되며 KRX 집계 시작 후 자동 표시됩니다.
         </small>
       )}
     </div>
@@ -450,7 +436,7 @@ function Flow({
               </div>
               <span>08:00부터</span>
             </div>
-            <Chart investors={data.investorPoints} program={programPoints} />
+            <Chart investors={data.investorPoints} program={programPoints} investorAvailable={data.investorAvailable} />
           </section>
         </>
       )}
@@ -550,7 +536,9 @@ function MarketDashboard({
     : [],
     samsung = data?.leaders?.find((stock) => stock.name.includes("삼성전자")),
     hynix = data?.leaders?.find((stock) => stock.name.includes("하이닉스")),
-    stockPrice = (stock: NonNullable<MarketFlow["leaders"]>[number] | undefined, fallback: string) => stock ? `${stock.price.toLocaleString("ko-KR")}원 · ${stock.changeRate >= 0 ? "+" : ""}${stock.changeRate.toFixed(1)}%` : fallback;
+    stockPrice = (stock: NonNullable<MarketFlow["leaders"]>[number] | undefined, fallback: string) => stock ? `${stock.price.toLocaleString("ko-KR")}원 · ${stock.changeRate >= 0 ? "+" : ""}${stock.changeRate.toFixed(1)}%` : fallback,
+    signalStatus = (stock: typeof samsung) => !stock || stock.program === 0 ? "수집 시작" : stock.program > 0 ? "매수 흐름" : "주의 관찰",
+    signalCopy = (stock: typeof samsung) => !stock ? "실데이터를 수집하고 있습니다." : `08:00 이후 프로그램 ${direction(stock.program)} ${formatEok(Math.abs(stock.program),false)}억원 · 외국인 ${stock.investorAvailable?`${direction(stock.foreign)} ${Math.abs(stock.foreign).toLocaleString("ko-KR")}주`:"NXT 집계 대기"}`;
   return (
     <div className="capture-area fp-dashboard" ref={captureRef}>
       <header className="fp-header">
@@ -605,13 +593,13 @@ function MarketDashboard({
             <article><span>Flow Confidence</span><strong>{confidence} / 100</strong><small>데이터·신호 신뢰도</small></article>
             <article><span>가장 중요한 변화</span><strong>{market === "NASDAQ" ? usLabel : insight!.label}</strong><small>{market === "NASDAQ" ? "미국 3대 지수" : "외국인·기관·프로그램 종합"}</small></article>
           </section>
-          <div className="fp-section-title"><h2>실시간 수급 스냅샷</h2><span>최근 30분 · 오늘 누적</span></div>
+          <div className="fp-section-title"><h2>실시간 수급 스냅샷</h2><span>매일 08:00 리셋 · 1분 자동 갱신</span></div>
           <div className="flow-cards">
             {market !== "NASDAQ" && actors.map(([name, total, delta, tone]) => (
               <article className={tone} key={name}>
                 <small>{name} · 최근 {name === "프로그램" ? programWindow.minutes : investorWindow.minutes}분</small>
-                <strong style={{whiteSpace:"nowrap"}}>{delta === null ? "수집 중" : signed(delta)}</strong>
-                <span>오늘 누적</span><b style={{whiteSpace:"nowrap"}}>{signed(total)}</b>
+                <strong style={{whiteSpace:"nowrap"}}>{name !== "프로그램" && !data?.investorAvailable ? "NXT 집계 대기" : delta === null ? "수집 중" : signed(delta)}</strong>
+                <span>오늘 누적</span><b style={{whiteSpace:"nowrap"}}>{name !== "프로그램" && !data?.investorAvailable ? "NXT 집계 대기" : signed(total)}</b>
                 <em className={`flow-shift ${flowShift(total, delta).includes("약화") ? "weakening" : ""}`}>Flow Shift · {flowShift(total, delta)}</em>
                 <svg viewBox="0 0 120 24"><path d="M0 14 L12 17 L25 11 L38 14 L52 9 L66 13 L80 8 L96 12 L108 10 L120 16" /></svg>
               </article>
@@ -633,7 +621,7 @@ function MarketDashboard({
               <article key={stock.code} className={`leader-flow ${stock.changeRate >= 0 ? "stock-up" : "stock-down"}`}>
                 <small>{stock.name}</small>
                 <strong style={{whiteSpace:"nowrap"}}>{stock.price.toLocaleString("ko-KR")}원 <em>{stock.changeRate >= 0 ? "▲" : "▼"}{Math.abs(stock.changeRate).toFixed(2)}%</em></strong>
-                <div><span>개인<b>{signedShares(stock.personal)}</b></span><span>외국인<b>{signedShares(stock.foreign)}</b></span><span>기관<b>{signedShares(stock.institution)}</b></span><span>프로그램<b>{signed(stock.program)}</b></span></div>
+                <div><span>개인<b>{stock.investorAvailable?signedShares(stock.personal):"NXT 집계 대기"}</b></span><span>외국인<b>{stock.investorAvailable?signedShares(stock.foreign):"NXT 집계 대기"}</b></span><span>기관<b>{stock.investorAvailable?signedShares(stock.institution):"NXT 집계 대기"}</b></span><span>프로그램<b>{signed(stock.program)}</b></span></div>
               </article>
             ))}
             {!data?.leaders?.length && (market === "KOSDAQ" ? ["제주반도체", "에코프로"] : market === "NASDAQ" ? ["SOXL", "KORU", "SanDisk"] : ["삼성전자", "SK하이닉스"]).map((name) => (
@@ -645,25 +633,25 @@ function MarketDashboard({
             ))}
           </div>
           {market === "KOSPI" && <section className="fp-signals">
-            <div className="fp-section-title"><h2>우선 확인할 신호</h2><span>위험 순 정렬</span></div>
+            <div className="fp-section-title"><h2>우선 확인할 신호</h2><span>매일 08:00 리셋 · 1분 자동 갱신</span></div>
             <div className="fp-signal-grid">
               <article className="fp-signal-card">
-                <header><div><small>PROGRAM DIP REVERSAL</small><h3>삼성전자</h3></div><b>반전 확인 대기</b></header>
-                <p>가격은 약세지만 프로그램 매수 흐름이 18분째 유지됩니다.</p>
-                <dl><div><dt>현재가</dt><dd>{stockPrice(samsung,"72,400원 · -2.4%")}</dd></div><div><dt>Flow Shift</dt><dd className="positive">매수 유지</dd></div><div><dt>확인 조건</dt><dd>3개 중 2개</dd></div></dl>
-                <footer>무효 조건 · 당일 저점 이탈 또는 프로그램 순매도 전환</footer>
+                <header><div><small>PROGRAM FLOW</small><h3>삼성전자</h3></div><b>{signalStatus(samsung)}</b></header>
+                <p>{signalCopy(samsung)}</p>
+                <dl><div><dt>현재가</dt><dd>{stockPrice(samsung,"수집 중")}</dd></div><div><dt>프로그램</dt><dd className={samsung?.program! >= 0 ? "positive" : "negative"}>{samsung ? direction(samsung.program) : "수집 중"}</dd></div><div><dt>기관</dt><dd>{samsung?.investorAvailable ? direction(samsung.institution) : "NXT 집계 대기"}</dd></div></dl>
+                <footer>08:00 첫 수집값을 0으로 두고 이후 변화량을 표시합니다.</footer>
               </article>
               <article className="fp-signal-card caution">
-                <header><div><small>PROGRAM RALLY EXIT</small><h3>SK하이닉스</h3></div><b>주의 관찰</b></header>
-                <p>고점 돌파에 실패했고 프로그램 매수 속도가 둔화 중입니다.</p>
-                <dl><div><dt>현재가</dt><dd>{stockPrice(hynix,"197,800원 · +1.8%")}</dd></div><div><dt>Flow Shift</dt><dd className="negative">매수 약화</dd></div><div><dt>반대 근거</dt><dd>기관 매수 유지</dd></div></dl>
-                <footer>확인 조건 · 최근 5분 순매도 전환 시 청산 관찰 강화</footer>
+                <header><div><small>PROGRAM FLOW</small><h3>SK하이닉스</h3></div><b>{signalStatus(hynix)}</b></header>
+                <p>{signalCopy(hynix)}</p>
+                <dl><div><dt>현재가</dt><dd>{stockPrice(hynix,"수집 중")}</dd></div><div><dt>프로그램</dt><dd className={hynix?.program! >= 0 ? "positive" : "negative"}>{hynix ? direction(hynix.program) : "수집 중"}</dd></div><div><dt>기관</dt><dd>{hynix?.investorAvailable ? direction(hynix.institution) : "NXT 집계 대기"}</dd></div></dl>
+                <footer>08:00 첫 수집값을 0으로 두고 이후 변화량을 표시합니다.</footer>
               </article>
             </div>
           </section>}
           <section className="panel briefing-chart fp-chart-panel">
             <div className="title"><h2>{market === "NASDAQ" ? "미국 3대 지수 장중 흐름" : "투자 주체별 누적 순매수/순매도"}</h2><span>{market === "NASDAQ" ? "(%)" : "(억원)"}</span></div>
-            {market === "NASDAQ" ? <IndexChart indices={usIndices}/> : <Chart investors={investors} program={program} />}
+            {market === "NASDAQ" ? <IndexChart indices={usIndices}/> : <Chart investors={investors} program={program} investorAvailable={data?.investorAvailable} />}
           </section>
         </>
       )}
@@ -753,7 +741,7 @@ export default function App() {
         <nav>
           {(["Flow", "AI", "Watch", "Feed", "Me"] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "Flow" ? <Home /> : t === "AI" ? <Search /> : t === "Watch" ? <Heart /> : t === "Feed" ? <MessageSquare /> : <UserRound />}
+              {t === "Flow" ? <Home /> : t === "AI" ? <ChartNoAxesCombined /> : t === "Watch" ? <Heart /> : t === "Feed" ? <MessageSquare /> : <UserRound />}
               <span>{t === "Flow" ? "Flow" : t === "AI" ? "종목" : t === "Watch" ? "관심 종목" : t === "Feed" ? "Feed" : "Me"}</span>
             </button>
           ))}
