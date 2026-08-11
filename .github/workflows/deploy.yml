@@ -1,0 +1,33 @@
+name: Deploy to Oracle
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: oracle-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Deploy
+        env:
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/oracle-key"
+          printf '%s' "$ORACLE_SSH_KEY" > "$RUNNER_TEMP/oracle-key"
+          ssh_opts=(-i "$RUNNER_TEMP/oracle-key" -o StrictHostKeyChecking=accept-new -o PubkeyAcceptedAlgorithms=+ssh-ed25519)
+          tar -czf - --exclude=.env --exclude=.cache --exclude=node_modules --exclude=dist --exclude=.git --exclude=.DS_Store . |
+            ssh "${ssh_opts[@]}" ubuntu@138.2.10.193 "sudo mkdir -p /opt/flowpulse && sudo tar -xzf - -C /opt/flowpulse"
+          ssh "${ssh_opts[@]}" ubuntu@138.2.10.193 "cd /opt/flowpulse && sudo docker compose build api && sudo docker tag flowpulse-api flowpulse-collector && sudo docker compose build web && sudo docker compose up -d --no-build && curl -fsS http://127.0.0.1/api/health"
