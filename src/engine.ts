@@ -1,0 +1,7 @@
+import type{FlowPoint,ProgramPoint}from'./domain';
+export function relativeProgramSeries(points:ProgramPoint[]){const base=points[0]?.value??0;return points.map(point=>({...point,value:point.value-base}))}
+export function temperature(p:FlowPoint){const gross=Math.abs(p.foreign)+Math.abs(p.institution);return gross?Math.round(50+50*(p.foreign+p.institution)/gross):50}
+export function flowSync(p:FlowPoint){const values=[p.foreign,p.institution,p.program],gross=values.reduce((sum,value)=>sum+Math.abs(value),0);return gross?Math.round(values.reduce((sum,value)=>sum+value,0)/gross*100):0}
+export function flowConfidence(stored:number,ready=true){return ready?Math.min(90,60+Math.min(30,Math.floor(stored/5))):0}
+export function flowShift(total:number,recent:number|null){if(recent===null)return'분석 준비';if(total<0&&recent>0)return'매도 약화';if(total>0&&recent>0)return'매수 유지';if(total>0&&recent<0)return'매수 약화';if(total<0&&recent<0)return'매도 유지';return'중립'}
+export function summary(p:FlowPoint){const temp=temperature(p),label=temp>=55?'매수 우위':temp<=45?'매도 우위':'중립',direction=(name:string,value:number)=>`${name} ${value>0?'순매수':value<0?'순매도':'중립'}`,largest=[['외국인',p.foreign],['기관',p.institution],['프로그램',p.program]].sort((a,b)=>Math.abs(Number(b[1]))-Math.abs(Number(a[1])))[0];return{temperature:temp,label,text:`${direction('외국인',p.foreign)}, ${direction('기관',p.institution)}, ${direction('프로그램',p.program)}입니다. 절대 규모는 ${largest[0]} 수급이 가장 크며 종합 수급은 ${label}입니다.`}}

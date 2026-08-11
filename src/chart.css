@@ -1,0 +1,48 @@
+.indices label {
+  display: block;
+  margin-top: 8px;
+  color: #77859f;
+  font-size: 10px;
+}
+.indices b {
+  margin: 2px 0;
+}
+.indices .recent {
+  color: #c9d3ea;
+}
+.indices em {
+  margin-top: 8px;
+  font-size: 9px;
+}
+.axis-unit {
+  margin-top: 14px;
+  color: #8d9ab5;
+  font-size: 10px;
+}
+.chart svg {
+  margin-top: 0;
+}
+.chart path {
+  stroke-width: 3;
+}
+.collecting {
+  display: block;
+  margin-top: 8px;
+  color: #8390a9;
+}
+.indices {
+  grid-template-columns: repeat(2, 1fr);
+}
+.legend {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.legend span:nth-child(2) {
+  color: #38a8ff;
+}
+.legend span:nth-child(3) {
+  color: #7047ff;
+}
+.legend span:nth-child(4) {
+  color: #ff9f43;
+}

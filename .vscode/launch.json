@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    
+    {
+      "name": "FlowPulse: 포트 정리 후 실행",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "test -f /usr/local/var/postgresql@17/PG_VERSION || brew postinstall postgresql@17; brew services start postgresql@17 >/dev/null; sleep 2; /usr/local/opt/postgresql@17/bin/createdb flowpulse 2>/dev/null || true; lsof -tiTCP:5174 -sTCP:LISTEN | xargs kill -9 2>/dev/null || true; lsof -tiTCP:8789 -sTCP:LISTEN | xargs kill -9 2>/dev/null || true; npm run dev",
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "pattern": "Local:\\s+(https?://\\S+)",
+        "uriFormat": "%s",
+        "action": "debugWithChrome"
+      }
+    }
+  ]
+}

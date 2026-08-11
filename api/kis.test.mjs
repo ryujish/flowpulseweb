@@ -1,0 +1,15 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { calculateCciEma, configured, normalizeFlow, normalizeInvestorQuantity, normalizeOverseasPrice, normalizePreMarket, normalizePrice, normalizePublicUsIndices, normalizeRank, selectCandidateStrategies } from "./kis.mjs";
+
+test("키가 없으면 실데이터로 표시하지 않는다", () => assert.equal(configured({}), false));
+test("시간대별 투자자 수급은 최신 누적값만 쓰고 프로그램도 최신 행을 쓴다", () => assert.deepEqual(normalizeFlow([{frgn_ntby_tr_pbmn:"-726500",prsn_ntby_tr_pbmn:"388600",orgn_ntby_tr_pbmn:"316600"},{frgn_ntby_tr_pbmn:"-716800",prsn_ntby_tr_pbmn:"398600",orgn_ntby_tr_pbmn:"296700"}],[{bsop_hour:"113700",whol_smtn_ntby_tr_pbmn:"-860"}]),{snapshot:{foreign:-726500,personal:388600,institution:316600,program:-860},programPoints:[{time:"11:37",value:-860}]}));
+test("대표 종목 시세를 숫자로 정규화한다", () => assert.deepEqual(normalizePrice({stck_prpr:"72,300",prdy_ctrt:"-1.40"}),{price:72300,changeRate:-1.4,twentyDay:0}));
+test("해외 종목 시세를 숫자로 정규화한다", () => assert.deepEqual(normalizeOverseasPrice({last:"136.5500",rate:"+3.39"}),{price:136.55,changeRate:3.39,twentyDay:0}));
+test("미국 프리마켓은 정규장과 분리해 정규화한다", () => assert.deepEqual(normalizePreMarket({overMarketPriceInfo:{tradingSessionType:"PRE_MARKET",overPrice:"1,222.02",fluctuationsRatio:"0.81"}}),{preMarketPrice:1222.02,preMarketChangeRate:0.81}));
+test("프리마켓이 아니면 별도 시세를 만들지 않는다", () => assert.equal(normalizePreMarket({overMarketPriceInfo:{tradingSessionType:"AFTER_MARKET",overPrice:"100"}}),null));
+test("종목 투자자 수급은 네이버와 같은 순매매량을 쓴다", () => assert.deepEqual(normalizeInvestorQuantity({prsn_ntby_qty:"281823",frgn_ntby_qty:"-263511",orgn_ntby_qty:"-33150"}),{personal:281823,foreign:-263511,institution:-33150}));
+test("공개 미국 지수 폴백은 나스닥·S&P500·다우만 정규화한다", () => assert.deepEqual(normalizePublicUsIndices([{reutersCode:".IXIC",closePrice:"26,612.89",fluctuationsRatio:"-0.29",localTradedAt:"2026-08-10T09:40:39-04:00"},{reutersCode:".VIX",closePrice:"15.44"}]),[{code:"COMP",name:"NASDAQ",price:26612.89,changeRate:-0.29,points:[{time:"09:40",value:26612.89}]}]));
+test("거래대금 순위는 상장 주식만 후보로 정규화한다", () => assert.deepEqual(normalizeRank([{mksc_shrn_iscd:"005930",hts_kor_isnm:"삼성전자",stck_prpr:"229500",acml_tr_pbmn:"123000",prdy_ctrt:"-0.2",vol_inrt:"88"},{mksc_shrn_iscd:"252670",hts_kor_isnm:"KODEX 인버스",stck_prpr:"100",acml_tr_pbmn:"999"}]),[{code:"005930",name:"삼성전자",market:"KOSPI",price:229500,changeRate:-0.2,amount:123000,volumeRatio:88}]));
+test("여러 관찰 전략을 병렬로 선별한다", () => {const history=new Map([["005930",[{at:0,value:100}]]]),[stock]=selectCandidateStrategies([{code:"005930",program:130,foreign:10,institution:20,changeRate:1,volumeRatio:130}],history,300001);assert.deepEqual(stock.strategies,["PROGRAM_MOMENTUM","SMART_MONEY_SYNC","BREAKOUT_CONFIRM"]);});
+test("CCI 20과 EMA 13을 계산한다", () => {const result=calculateCciEma(Array.from({length:30},(_,index)=>100+index+(index===29?10:0)));assert.equal(Number.isFinite(result.cci)&&Number.isFinite(result.ema),true);});
