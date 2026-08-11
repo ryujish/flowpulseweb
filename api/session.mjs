@@ -29,3 +29,11 @@ export function accurateHistoryStart(market, now = new Date()) {
   const session = marketSessionStart(market, now), corrected = new Date("2026-08-10T03:31:00Z");
   return market === "NASDAQ" || session > corrected ? session : corrected;
 }
+
+export function marketIsOpen(market, now = new Date()) {
+  const timeZone = market === "NASDAQ" ? "America/New_York" : "Asia/Seoul",
+    p = partsAt(now, timeZone), minutes = p.hour * 60 + p.minute,
+    weekday = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
+  if ([0, 6].includes(weekday)) return false;
+  return market === "NASDAQ" ? minutes >= 570 && minutes <= 960 : minutes >= 480 && minutes < 1200;
+}

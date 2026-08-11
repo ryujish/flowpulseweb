@@ -1,19 +1,12 @@
 import { configured, KisClient } from "./kis.mjs";
 import { cleanup, markFailure, migrate, pool, saveSnapshot } from "./db.mjs";
+import { marketIsOpen } from "./session.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function newYorkMinutes(now) {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now),
-    value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return Number(value.hour) * 60 + Number(value.minute);
-}
-
 function activeMarkets(now = new Date(), force = false) {
   if (force) return ["KOSPI", "NASDAQ", "KOSDAQ"];
-  const domestic = now.getHours() >= 8 && now.getHours() < 20,
-    ny = newYorkMinutes(now), us = ny >= 9 * 60 + 30 && ny <= 16 * 60;
-  return [...(domestic ? ["KOSPI", "KOSDAQ"] : []), ...(us ? ["NASDAQ"] : [])];
+  return ["KOSPI", "KOSDAQ", "NASDAQ"].filter((market) => marketIsOpen(market, now));
 }
 
 async function fetchMarket(market) {
