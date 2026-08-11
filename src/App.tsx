@@ -627,7 +627,7 @@ function MarketDashboard({
               <article className={`market-index us-leader ${stock.changeRate >= 0 ? "stock-up" : "stock-down"}`} key={stock.code}>
                 <small>{stock.name}</small>
                 <strong>${stock.price.toLocaleString("en-US")}</strong>
-                <div className="market-moves"><span>전일 대비<b className={stock.changeRate >= 0 ? "up" : "down"}>{stock.changeRate >= 0 ? "+" : ""}{stock.changeRate.toFixed(2)}%</b></span><span>프리장 시작 대비<b className={(stock.preMarketChangeRate ?? stock.changeRate) >= 0 ? "up" : "down"}>{(stock.preMarketChangeRate ?? stock.changeRate) >= 0 ? "+" : ""}{(stock.preMarketChangeRate ?? stock.changeRate).toFixed(2)}%</b></span></div>
+                <div className="market-moves"><span>전일 대비<b className={stock.changeRate >= 0 ? "up" : "down"}>{stock.changeRate >= 0 ? "+" : ""}{stock.changeRate.toFixed(2)}%</b></span>{stock.preMarketPrice && <span>프리장 시작 대비<b className={stock.preMarketChangeRate! >= 0 ? "up" : "down"}>{stock.preMarketChangeRate! >= 0 ? "+" : ""}{stock.preMarketChangeRate!.toFixed(2)}%</b></span>}</div>
               </article>
             ) : (
               <article key={stock.code} className={`leader-flow ${stock.changeRate >= 0 ? "stock-up" : "stock-down"}`}>

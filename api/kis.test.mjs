@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateCciEma, configured, normalizeFlow, normalizeInvestorQuantity, normalizeOverseasPrice, normalizePreMarket, normalizePrice, normalizePublicUsIndices, normalizeRank, selectCandidateStrategies } from "./kis.mjs";
+import { calculateCciEma, configured, isUsPreMarket, normalizeFlow, normalizeInvestorQuantity, normalizeOverseasPrice, normalizePreMarket, normalizePreMarketOverseasPrice, normalizePrice, normalizePublicUsIndices, normalizeRank, selectCandidateStrategies } from "./kis.mjs";
 
 test("키가 없으면 실데이터로 표시하지 않는다", () => assert.equal(configured({}), false));
 test("시간대별 투자자 수급은 최신 누적값만 쓰고 프로그램도 최신 행을 쓴다", () => assert.deepEqual(normalizeFlow([{frgn_ntby_tr_pbmn:"-726500",prsn_ntby_tr_pbmn:"388600",orgn_ntby_tr_pbmn:"316600"},{frgn_ntby_tr_pbmn:"-716800",prsn_ntby_tr_pbmn:"398600",orgn_ntby_tr_pbmn:"296700"}],[{bsop_hour:"113700",whol_smtn_ntby_tr_pbmn:"-860"}]),{snapshot:{foreign:-726500,personal:388600,institution:316600,program:-860},programPoints:[{time:"11:37",value:-860}]}));
 test("대표 종목 시세를 숫자로 정규화한다", () => assert.deepEqual(normalizePrice({stck_prpr:"72,300",prdy_ctrt:"-1.40"}),{price:72300,changeRate:-1.4,twentyDay:0}));
 test("해외 종목 시세를 숫자로 정규화한다", () => assert.deepEqual(normalizeOverseasPrice({last:"136.5500",rate:"+3.39"}),{price:136.55,changeRate:3.39,twentyDay:0}));
-test("미국 프리마켓은 정규장과 분리해 정규화한다", () => assert.deepEqual(normalizePreMarket({overMarketPriceInfo:{tradingSessionType:"PRE_MARKET",overPrice:"1,222.02",fluctuationsRatio:"0.81"}}),{preMarketPrice:1222.02,preMarketChangeRate:0.81}));
+test("프리장에는 정규장 종가와 프리장 등락률을 분리한다", () => assert.deepEqual(normalizePreMarketOverseasPrice({base:"130",last:"131.82"},[{clos:"130",rate:"-7.31"}]),{price:130,changeRate:-7.31,preMarketPrice:131.82,preMarketChangeRate:1.4,twentyDay:0}));
+test("미국 프리장 시간만 분리 조회한다", () => {assert.equal(isUsPreMarket(new Date("2026-08-11T10:00:00Z")),true);assert.equal(isUsPreMarket(new Date("2026-08-11T14:00:00Z")),false)});
+test("미국 프리마켓은 정규장 종가와 별도로 계산한다", () => assert.deepEqual(normalizePreMarket({overMarketPriceInfo:{tradingSessionType:"PRE_MARKET",overPrice:"131.82",fluctuationsRatio:"-7.31"}},130),{preMarketPrice:131.82,preMarketChangeRate:1.4}));
 test("프리마켓이 아니면 별도 시세를 만들지 않는다", () => assert.equal(normalizePreMarket({overMarketPriceInfo:{tradingSessionType:"AFTER_MARKET",overPrice:"100"}}),null));
 test("종목 투자자 수급은 네이버와 같은 순매매량을 쓴다", () => assert.deepEqual(normalizeInvestorQuantity({prsn_ntby_qty:"281823",frgn_ntby_qty:"-263511",orgn_ntby_qty:"-33150"}),{personal:281823,foreign:-263511,institution:-33150}));
 test("공개 미국 지수 폴백은 나스닥·S&P500·다우만 정규화한다", () => assert.deepEqual(normalizePublicUsIndices([{reutersCode:".IXIC",closePrice:"26,612.89",fluctuationsRatio:"-0.29",localTradedAt:"2026-08-10T09:40:39-04:00"},{reutersCode:".VIX",closePrice:"15.44"}]),[{code:"COMP",name:"NASDAQ",price:26612.89,changeRate:-0.29,points:[{time:"09:40",value:26612.89}]}]));

@@ -18,10 +18,10 @@ export function normalizeNumber(value) {
   const number = Number(String(value ?? "").replaceAll(",", ""));
   return Number.isFinite(number) ? number : 0;
 }
-export function normalizePreMarket(data = {}) {
-  const quote = data.overMarketPriceInfo;
-  if (quote?.tradingSessionType !== "PRE_MARKET" || !normalizeNumber(quote.overPrice)) return null;
-  return { preMarketPrice: normalizeNumber(quote.overPrice), preMarketChangeRate: normalizeNumber(quote.fluctuationsRatio) };
+export function normalizePreMarket(data = {}, regularPrice = 0) {
+  const quote = data.overMarketPriceInfo, preMarketPrice = normalizeNumber(quote?.overPrice);
+  if (quote?.tradingSessionType !== "PRE_MARKET" || !preMarketPrice) return null;
+  return { preMarketPrice, preMarketChangeRate: regularPrice ? Math.round((preMarketPrice / regularPrice - 1) * 10000) / 100 : normalizeNumber(quote.fluctuationsRatio) };
 }
 export function normalizeFlow(investors = [], program = []) {
   const latest = investors[0] ?? {},
@@ -56,6 +56,14 @@ export function normalizeOverseasPrice(output = {}) {
     changeRate: normalizeNumber(output.rate),
     twentyDay: 0,
   };
+}
+export function normalizePreMarketOverseasPrice(output = {}, history = []) {
+  const price = normalizeNumber(output.base), regular = history.find((row) => normalizeNumber(row.clos) === price), preMarketPrice = normalizeNumber(output.last);
+  return { price, changeRate: normalizeNumber(regular?.rate), preMarketPrice, preMarketChangeRate: price && preMarketPrice ? Math.round((preMarketPrice / price - 1) * 10000) / 100 : 0, twentyDay: 0 };
+}
+export function isUsPreMarket(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "numeric", hourCycle: "h23" }).formatToParts(now), value = (type) => Number(parts.find((part) => part.type === type)?.value ?? 0), weekday = parts.find((part) => part.type === "weekday")?.value;
+  return !["Sat", "Sun"].includes(weekday) && value("hour") * 60 + value("minute") >= 240 && value("hour") * 60 + value("minute") < 570;
 }
 export function normalizeInvestorQuantity(investor = {}) {
   return {
@@ -113,7 +121,8 @@ export async function publicUsOverview() {
     indices = normalizePublicUsIndices(rows),
     leaders = (await Promise.all([["SOXL", "SOXL", "SOXL.A"], ["KORU", "KORU", "KORU.A"], ["SNDK", "SanDisk", "SNDK.O"]].map(async ([code, name, reutersCode]) => {
       const payload = await fetch(`https://polling.finance.naver.com/api/realtime/worldstock/stock/${reutersCode}`).then((response) => response.ok ? response.json() : Promise.reject()).catch(() => ({})), data = payload.datas?.[0] ?? {};
-      return { code, name, price: normalizeNumber(data.closePrice ?? data.price), changeRate: normalizeNumber(data.fluctuationsRatio), ...normalizePreMarket(data), personal: 0, foreign: 0, institution: 0, program: 0 };
+      const price = normalizeNumber(data.closePrice ?? data.price);
+      return { code, name, price, changeRate: normalizeNumber(data.fluctuationsRatio), ...normalizePreMarket(data, price), personal: 0, foreign: 0, institution: 0, program: 0 };
     }))).filter((stock) => stock.price > 0);
   return { live: true, source: "네이버 실시간 폴백", asOf: new Date().toISOString(), market: "NASDAQ", indices, leaders };
 }
@@ -331,11 +340,12 @@ export class KisClient {
         "/uapi/overseas-price/v1/quotations/price",
         "HHDFS00000300",
         { AUTH: "", EXCD: exchange, SYMB: code },
-      ), preMarket = await fetch(`https://polling.finance.naver.com/api/realtime/worldstock/stock/${reutersCode}`)
-        .then((response) => response.ok ? response.json() : Promise.reject())
-        .then((payload) => normalizePreMarket(payload.datas?.[0] ?? {}))
-        .catch(() => null);
-      leaders.push({ code, name, ...normalizeOverseasPrice(body.output ?? {}), ...preMarket, personal: 0, foreign: 0, institution: 0, program: 0 });
+      ), history = isUsPreMarket() ? await this.get("/uapi/overseas-price/v1/quotations/dailyprice", "HHDFS76240000", { AUTH: "", EXCD: exchange, SYMB: code, GUBN: "", BYMD: "", MODP: "0", KEYB: "" }) : null,
+        regular = history ? normalizePreMarketOverseasPrice(body.output ?? {}, history.output2 ?? []) : normalizeOverseasPrice(body.output ?? {}), preMarket = history ? { preMarketPrice: regular.preMarketPrice, preMarketChangeRate: regular.preMarketChangeRate } : await fetch(`https://polling.finance.naver.com/api/realtime/worldstock/stock/${reutersCode}`)
+          .then((response) => response.ok ? response.json() : Promise.reject())
+          .then((payload) => normalizePreMarket(payload.datas?.[0] ?? {}, regular.price))
+          .catch(() => null);
+      leaders.push({ code, name, ...regular, ...preMarket, personal: 0, foreign: 0, institution: 0, program: 0 });
     }
     const end = new Date(), start = new Date(end);
     start.setDate(start.getDate() - 10);
