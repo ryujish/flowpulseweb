@@ -1,0 +1,3 @@
+flowpulse.ai.kr, www.flowpulse.ai.kr {
+  reverse_proxy web:80
+}
