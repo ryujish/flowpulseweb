@@ -35,5 +35,5 @@ export function marketIsOpen(market, now = new Date()) {
     p = partsAt(now, timeZone), minutes = p.hour * 60 + p.minute,
     weekday = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
   if ([0, 6].includes(weekday)) return false;
-  return market === "NASDAQ" ? minutes >= 570 && minutes <= 960 : minutes >= 480 && minutes < 1200;
+  return market === "NASDAQ" ? minutes >= 240 && minutes < 1200 : minutes >= 480 && minutes < 1200;
 }

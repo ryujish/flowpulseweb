@@ -20,7 +20,7 @@ export function normalizeNumber(value) {
 }
 export function normalizePreMarket(data = {}, regularPrice = 0) {
   const quote = data.overMarketPriceInfo, preMarketPrice = normalizeNumber(quote?.overPrice);
-  if (quote?.tradingSessionType !== "PRE_MARKET" || !preMarketPrice) return null;
+  if (!["PRE_MARKET","AFTER_MARKET","POST_MARKET"].includes(quote?.tradingSessionType) || !preMarketPrice) return null;
   return { preMarketPrice, preMarketChangeRate: regularPrice ? Math.round((preMarketPrice / regularPrice - 1) * 10000) / 100 : normalizeNumber(quote.fluctuationsRatio) };
 }
 export function normalizeFlow(investors = [], program = []) {

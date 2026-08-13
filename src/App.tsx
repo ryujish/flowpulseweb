@@ -27,7 +27,7 @@ import type { SearchableStock } from "./StockAnalysis";
 import type { EndedObservation, EntryRecord, Observation } from "./Watchlist";
 import { apiUrl } from "./api";
 import ThemeButton from "./ThemeButton";
-import { isMorningPreparationTime, isNightForecastTime, nightForecast } from "./nightForecast";
+import { isMorningPreparationTime, isNightForecastTime, isUsExtendedMarketOpen, nightForecast } from "./nightForecast";
 
 type Tab = "Flow" | "AI" | "Watch" | "Feed" | "Me";
 type Market = "KOSPI" | "KOSDAQ" | "NASDAQ";
@@ -541,11 +541,12 @@ function MarketDashboard({
     hynix = data?.leaders?.find((stock) => stock.name.includes("하이닉스")),
     nightMode = isNightForecastTime(),
     forecastBucket = Math.floor(Date.now()/600000),
+    forecastKey = isUsExtendedMarketOpen() ? forecastBucket : markets.NASDAQ?.asOf,
     morningPreparation = market !== "NASDAQ" && isMorningPreparationTime(),
     forecasts = useMemo(()=>({
       samsung:nightMode?nightForecast(samsung,markets.NASDAQ,"samsung"):null,
       hynix:nightMode?nightForecast(hynix,markets.NASDAQ,"hynix"):null,
-    }),[forecastBucket,nightMode]),
+    }),[forecastKey,nightMode,samsung?.price,hynix?.price]),
     samsungForecast=forecasts.samsung,
     hynixForecast=forecasts.hynix,
     stockInvestorPending = "장중 미제공",

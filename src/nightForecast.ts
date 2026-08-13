@@ -13,9 +13,17 @@ export const isMorningPreparationTime = (date = new Date()) => {
   return hour >= 6 && hour < 8;
 };
 
+export const isUsExtendedMarketOpen = (date = new Date()) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone:"America/New_York", weekday:"short", hour:"2-digit", minute:"2-digit", hourCycle:"h23",
+    }).formatToParts(date).map(({type,value})=>[type,value])),
+    minutes=Number(parts.hour)*60+Number(parts.minute);
+  return !["Sat","Sun"].includes(parts.weekday) && minutes>=240 && minutes<1200;
+};
+
 export function nightForecast(stock:Quote|undefined, us:MarketFlow|undefined, kind:"samsung"|"hynix"):NightForecast|null {
   if (!stock || !us) return null;
-  const leader=(code:string)=>(us.leaders??[]).find(item=>item.code===code)?.changeRate,
+  const leader=(code:string)=>{const item=(us.leaders??[]).find(item=>item.code===code);return item?.preMarketChangeRate??item?.changeRate},
     index=(code:string)=>(us.indices??[]).find(item=>item.code===code)?.changeRate,
     koru=leader("KORU"), soxl=leader("SOXL"), nasdaq=index("COMP"), mu=leader("MU"), sndk=leader("SNDK"), skhy=leader("SKHY");
   if ([koru,soxl,nasdaq].some(value=>value===undefined)) return null;
