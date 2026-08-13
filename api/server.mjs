@@ -44,6 +44,20 @@ createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname === "/api/health") return json(res, 200, { ok: true, database: "postgresql", ingestion: await health() });
+    if (url.pathname === "/api/stocks/detail") {
+      const code=url.searchParams.get("code")?.trim();
+      if (!/^\d{6}$/.test(code??"")) return json(res,400,{message:"종목코드를 확인해주세요."});
+      for (const market of ["KOSPI","KOSDAQ"]) {
+        const rows=await readMarket(market,accurateHistoryStart(market)), first=rows[0]?.payload.leaders?.find(stock=>stock.code===code), latest=rows.at(-1)?.payload.leaders?.find(stock=>stock.code===code), personalUnavailable=latest?.personalAvailable===false, points=rows.flatMap(({capturedAt,payload})=>{
+          const stock=payload.leaders?.find(item=>item.code===code);
+          return stock?[{time:capturedAt,price:stock.price,personal:personalUnavailable?null:stock.personal-(first?.personal??stock.personal),foreign:stock.foreign,institution:stock.institution,program:stock.program-(first?.program??stock.program)}]:[];
+        });
+        if (points.length) {
+          return json(res,200,{...latest,personal:points.at(-1).personal,program:points.at(-1).program,market,asOf:rows.at(-1).capturedAt,points});
+        }
+      }
+      return json(res,404,{message:"수집 중인 종목이 아닙니다."});
+    }
     if (url.pathname === "/api/candidates") {
       if (!configured()) return json(res, 503, { live:false, message:"KIS 설정이 필요합니다." });
       if (Date.now()-candidateCache.savedAt>60000 && !candidateRefresh) candidateRefresh=refreshCandidates();

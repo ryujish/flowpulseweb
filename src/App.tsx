@@ -25,6 +25,7 @@ import StockAnalysis from "./StockAnalysis";
 import Watchlist from "./Watchlist";
 import type { SearchableStock } from "./StockAnalysis";
 import type { EndedObservation, EntryRecord, Observation } from "./Watchlist";
+import { apiUrl } from "./api";
 
 type Tab = "Flow" | "AI" | "Watch" | "Feed" | "Me";
 type Market = "KOSPI" | "KOSDAQ" | "NASDAQ";
@@ -49,7 +50,7 @@ function useMarkets() {
     let cancelled = false;
     const fetchOne = async (value: Market) => {
         try {
-          const response = await fetch(`http://${location.hostname}:8789/api/market/flow?market=${value}`), body = await response.json();
+          const response = await fetch(apiUrl(`/api/market/flow?market=${value}`)), body = await response.json();
           if (!cancelled && response.ok && body.live && body.market === value) {
             setMarkets((current) => ({ ...current, [value]: body }));
             setLoading((current) => ({ ...current, [value]: false }));
@@ -71,7 +72,7 @@ function useMarkets() {
 }
 function useCandidates() {
   const [data,setData] = useState<{stocks:SearchableStock[];universeCount:number;priceCount:number;calculatedAt?:string}>({stocks:[],universeCount:0,priceCount:0});
-  useEffect(()=>{let cancelled=false;const load=async()=>{try{const response=await fetch("/api/candidates"),body=await response.json();if(!cancelled&&response.ok&&body.live)setData(body);}catch{}};load();const timer=setInterval(load,60000);return()=>{cancelled=true;clearInterval(timer)}},[]);
+  useEffect(()=>{let cancelled=false;const load=async()=>{try{const response=await fetch(apiUrl("/api/candidates")),body=await response.json();if(!cancelled&&response.ok&&body.live)setData(body);}catch{}};load();const timer=setInterval(load,60000);return()=>{cancelled=true;clearInterval(timer)}},[]);
   return data;
 }
 
