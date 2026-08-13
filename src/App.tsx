@@ -49,7 +49,7 @@ function useMarkets() {
     let cancelled = false;
     const fetchOne = async (value: Market) => {
         try {
-          const response = await fetch(`/api/market/flow?market=${value}`), body = await response.json();
+          const response = await fetch(`http://${location.hostname}:8789/api/market/flow?market=${value}`), body = await response.json();
           if (!cancelled && response.ok && body.live && body.market === value) {
             setMarkets((current) => ({ ...current, [value]: body }));
             setLoading((current) => ({ ...current, [value]: false }));
