@@ -39,6 +39,8 @@ export type MarketFlow = {
     institution: number;
     program: number;
     investorAvailable?: boolean;
+    investorEstimated?: boolean;
+    personalAvailable?: boolean;
     preMarketPrice?: number;
     preMarketChangeRate?: number;
   }>;

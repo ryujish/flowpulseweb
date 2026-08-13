@@ -536,8 +536,8 @@ function MarketDashboard({
     : [],
     samsung = data?.leaders?.find((stock) => stock.name.includes("삼성전자")),
     hynix = data?.leaders?.find((stock) => stock.name.includes("하이닉스")),
-    stockInvestorPending = "종목별 집계 대기",
-    stockInvestorReady = (stock: NonNullable<MarketFlow["leaders"]>[number] | undefined) => Boolean(stock?.investorAvailable || (data?.collection?.stored ?? 0) > 1),
+    stockInvestorPending = "장중 미제공",
+    stockInvestorReady = (stock: NonNullable<MarketFlow["leaders"]>[number] | undefined) => Boolean(stock?.investorAvailable),
     stockPrice = (stock: NonNullable<MarketFlow["leaders"]>[number] | undefined, fallback: string) => stock ? `${stock.price.toLocaleString("ko-KR")}원 · ${stock.changeRate >= 0 ? "+" : ""}${stock.changeRate.toFixed(1)}%` : fallback,
     signalStatus = (stock: typeof samsung) => !stock || stock.program === 0 ? "수집 시작" : stock.program > 0 ? "매수 흐름" : "주의 관찰",
     signalCopy = (stock: typeof samsung) => !stock ? "실데이터를 수집하고 있습니다." : `08:00 이후 프로그램 ${direction(stock.program)} ${formatEok(Math.abs(stock.program),false)}억원 · 외국인 ${stockInvestorReady(stock)?`${direction(stock.foreign)} ${Math.abs(stock.foreign).toLocaleString("ko-KR")}주`:stockInvestorPending}`;
@@ -623,7 +623,7 @@ function MarketDashboard({
               <article key={stock.code} className={`leader-flow ${stock.changeRate >= 0 ? "stock-up" : "stock-down"}`}>
                 <small>{stock.name}</small>
                 <strong style={{whiteSpace:"nowrap"}}>{stock.price.toLocaleString("ko-KR")}원 <em>{stock.changeRate >= 0 ? "▲" : "▼"}{Math.abs(stock.changeRate).toFixed(2)}%</em></strong>
-                <div><span>개인<b>{stockInvestorReady(stock)?signedShares(stock.personal):stockInvestorPending}</b></span><span>외국인<b>{stockInvestorReady(stock)?signedShares(stock.foreign):stockInvestorPending}</b></span><span>기관<b>{stockInvestorReady(stock)?signedShares(stock.institution):stockInvestorPending}</b></span><span>프로그램<b>{signed(stock.program)}</b></span></div>
+                <div><span>개인<b>{stock.personalAvailable === false ? stockInvestorPending : stockInvestorReady(stock) ? signedShares(stock.personal) : "집계 대기"}</b></span><span>외국인<b>{stockInvestorReady(stock)?signedShares(stock.foreign):"집계 대기"}</b></span><span>기관<b>{stockInvestorReady(stock)?signedShares(stock.institution):"집계 대기"}</b></span><span>프로그램<b>{signed(stock.program)}</b></span></div>
               </article>
             ))}
             {!data?.leaders?.length && (market === "KOSDAQ" ? ["제주반도체", "에코프로"] : market === "NASDAQ" ? ["SOXL", "KORU", "SanDisk"] : ["삼성전자", "SK하이닉스"]).map((name) => (
@@ -639,13 +639,13 @@ function MarketDashboard({
             <div className="fp-signal-grid">
               <article className="fp-signal-card">
                 <header><div><small>PROGRAM FLOW</small><h3>삼성전자</h3></div><b>{signalStatus(samsung)}</b></header>
-                <p>{signalCopy(samsung)}</p>
+                <p>{signalCopy(samsung)} · 외국인·기관은 장중 추정 집계</p>
                 <dl><div><dt>현재가</dt><dd>{stockPrice(samsung,"수집 중")}</dd></div><div><dt>프로그램</dt><dd className={samsung?.program! >= 0 ? "positive" : "negative"}>{samsung ? direction(samsung.program) : "수집 중"}</dd></div><div><dt>기관</dt><dd>{samsung && stockInvestorReady(samsung) ? direction(samsung.institution) : stockInvestorPending}</dd></div></dl>
                 <footer>08:00 첫 수집값을 0으로 두고 이후 변화량을 표시합니다.</footer>
               </article>
               <article className="fp-signal-card caution">
                 <header><div><small>PROGRAM FLOW</small><h3>SK하이닉스</h3></div><b>{signalStatus(hynix)}</b></header>
-                <p>{signalCopy(hynix)}</p>
+                <p>{signalCopy(hynix)} · 외국인·기관은 장중 추정 집계</p>
                 <dl><div><dt>현재가</dt><dd>{stockPrice(hynix,"수집 중")}</dd></div><div><dt>프로그램</dt><dd className={hynix?.program! >= 0 ? "positive" : "negative"}>{hynix ? direction(hynix.program) : "수집 중"}</dd></div><div><dt>기관</dt><dd>{hynix && stockInvestorReady(hynix) ? direction(hynix.institution) : stockInvestorPending}</dd></div></dl>
                 <footer>08:00 첫 수집값을 0으로 두고 이후 변화량을 표시합니다.</footer>
               </article>

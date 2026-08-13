@@ -73,10 +73,27 @@ export function normalizeInvestorQuantity(investor = {}) {
     institution: normalizeNumber(investor.orgn_ntby_qty),
   };
 }
+export function normalizeInvestorEstimate(rows = []) {
+  const latest = rows[0];
+  if (!latest) return { foreign: 0, institution: 0, investorAvailable: false, investorEstimated: false };
+  return {
+    foreign: normalizeNumber(latest.frgn_fake_ntby_qty),
+    institution: normalizeNumber(latest.orgn_fake_ntby_qty),
+    investorAvailable: true,
+    investorEstimated: true,
+  };
+}
 export function resetLeaderFlows(latest = [], opening = [], hasMinuteHistory = false) {
   return latest.map((stock) => {
     const base = opening.find((item) => item.code === stock.code) ?? {};
-    return { ...stock, personal:stock.personal-(base.personal??stock.personal), foreign:stock.foreign-(base.foreign??stock.foreign), institution:stock.institution-(base.institution??stock.institution), program:stock.program-(base.program??stock.program), investorAvailable:stock.investorAvailable || hasMinuteHistory };
+    return {
+      ...stock,
+      personal: stock.personal - (base.personal ?? stock.personal),
+      foreign: stock.investorEstimated ? stock.foreign : stock.foreign - (base.foreign ?? stock.foreign),
+      institution: stock.investorEstimated ? stock.institution : stock.institution - (base.institution ?? stock.institution),
+      program: stock.program - (base.program ?? stock.program),
+      investorAvailable: stock.investorAvailable || hasMinuteHistory,
+    };
   });
 }
 export function normalizeRank(rows = [], market = "KOSPI") {
@@ -284,16 +301,16 @@ export class KisClient {
       ["005930", "삼성전자"],
       ["000660", "SK하이닉스"],
     ])) {
-      const [priceBody, investorBody, programBody] = await Promise.all([
+      const [priceBody, estimateBody, programBody] = await Promise.all([
           this.get(
             "/uapi/domestic-stock/v1/quotations/inquire-price",
             "FHKST01010100",
             { FID_COND_MRKT_DIV_CODE: "UN", FID_INPUT_ISCD: code },
           ),
           this.get(
-            "/uapi/domestic-stock/v1/quotations/inquire-investor",
-            "FHKST01010900",
-            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+            "/uapi/domestic-stock/v1/quotations/investor-trend-estimate",
+            "HHPTJ04160200",
+            { MKSC_SHRN_ISCD: code },
           ).catch(() => ({ output: [] })),
           this.get(
             "/uapi/domestic-stock/v1/quotations/program-trade-by-stock",
@@ -302,14 +319,15 @@ export class KisClient {
           ).catch(() => ({ output: [] })),
         ]),
         price = normalizePrice(priceBody.output ?? {}),
-        investor = investorBody.output?.[0] ?? {},
+        estimate = normalizeInvestorEstimate(estimateBody.output2 ?? []),
         stockProgram = programBody.output?.[0] ?? {};
       leaders.push({
         code,
         name,
         ...price,
-        ...normalizeInvestorQuantity(investor),
-        investorAvailable: [investor.prsn_ntby_qty,investor.frgn_ntby_qty,investor.orgn_ntby_qty].some((value)=>normalizeNumber(value)!==0),
+        personal: 0,
+        personalAvailable: false,
+        ...estimate,
         program: normalizeNumber(stockProgram.whol_smtn_ntby_tr_pbmn) / 1000000,
       });
     }
