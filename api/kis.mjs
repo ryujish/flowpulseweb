@@ -73,11 +73,10 @@ export function normalizeInvestorQuantity(investor = {}) {
     institution: normalizeNumber(investor.orgn_ntby_qty),
   };
 }
-export function resetLeaderFlows(latest = [], opening = []) {
+export function resetLeaderFlows(latest = [], opening = [], hasMinuteHistory = false) {
   return latest.map((stock) => {
     const base = opening.find((item) => item.code === stock.code) ?? {};
-    const unavailable = stock.investorAvailable === false;
-    return { ...stock, personal:unavailable?0:stock.personal-(base.personal??stock.personal), foreign:unavailable?0:stock.foreign-(base.foreign??stock.foreign), institution:unavailable?0:stock.institution-(base.institution??stock.institution), program:stock.program-(base.program??stock.program) };
+    return { ...stock, personal:stock.personal-(base.personal??stock.personal), foreign:stock.foreign-(base.foreign??stock.foreign), institution:stock.institution-(base.institution??stock.institution), program:stock.program-(base.program??stock.program), investorAvailable:stock.investorAvailable || hasMinuteHistory };
   });
 }
 export function normalizeRank(rows = [], market = "KOSPI") {

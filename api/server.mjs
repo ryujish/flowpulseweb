@@ -36,7 +36,7 @@ function responseWithHistory(market, rows) {
   }
   const investorPoints = rows.map(({ capturedAt, payload }) => ({ time: capturedAt, ...payload.snapshot })),
     programPoints = investorPoints.map((point) => ({ time: point.time, value: point.program }));
-  return { ...latest, leaders:resetLeaderFlows(latest.leaders, rows[0].payload.leaders), investorPoints, programPoints, collection: { intervalSeconds: 60, stored: rows.length, maxStored: 7 * 24 * 60, lastStoredAt: rows.at(-1).capturedAt } };
+  return { ...latest, leaders:resetLeaderFlows(latest.leaders, rows[0].payload.leaders, rows.length > 1), investorPoints, programPoints, collection: { intervalSeconds: 60, stored: rows.length, maxStored: 7 * 24 * 60, lastStoredAt: rows.at(-1).capturedAt } };
 }
 
 await migrate();

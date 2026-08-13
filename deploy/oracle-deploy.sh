@@ -27,4 +27,4 @@ tar -czf - \
 
 "${SSH[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && sudo docker compose build api && sudo docker tag flowpulse-api flowpulse-collector && sudo docker compose build web && sudo docker compose up -d --no-build && sudo docker compose ps && curl -fsS http://127.0.0.1/api/health"
 
-echo "Deploy complete: http://138.2.10.193/"
+echo "Deploy complete: https://flowpulse.ai.kr/"
