@@ -5,8 +5,15 @@ const { Pool } = pg;
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL ?? "postgresql://localhost/flowpulse" });
 
 export async function migrate() {
-  await pool.query(await readFile(new URL("../db/schema.sql", import.meta.url), "utf8"));
-  await importLegacyHistory();
+  const client=await pool.connect();
+  try {
+    await client.query(`SELECT pg_advisory_lock(715026)`);
+    await client.query(await readFile(new URL("../db/schema.sql", import.meta.url), "utf8"));
+    await importLegacyHistory();
+  } finally {
+    await client.query(`SELECT pg_advisory_unlock(715026)`);
+    client.release();
+  }
 }
 
 async function importLegacyHistory() {
@@ -63,6 +70,13 @@ export async function readMarket(market, since) {
 }
 
 export const cleanup = () => pool.query(`DELETE FROM market_snapshots WHERE captured_at < now() - interval '7 days'`);
+export async function saveCandidates(payload) {
+  await pool.query(`INSERT INTO candidate_snapshot (id, saved_at, payload) VALUES (true, now(), $1) ON CONFLICT (id) DO UPDATE SET saved_at=now(), payload=EXCLUDED.payload`,[payload]);
+}
+export async function readCandidates() {
+  const {rows}=await pool.query(`SELECT saved_at AS "savedAt", payload FROM candidate_snapshot WHERE id=true`);
+  return rows[0]??null;
+}
 export async function health() {
   const { rows } = await pool.query(`SELECT source, last_success_at AS "lastSuccessAt", status, message FROM ingestion_state ORDER BY source`);
   return rows;

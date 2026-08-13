@@ -14,3 +14,9 @@ CREATE TABLE IF NOT EXISTS ingestion_state (
   status text NOT NULL,
   message text
 );
+
+CREATE TABLE IF NOT EXISTS candidate_snapshot (
+  id boolean PRIMARY KEY DEFAULT true CHECK (id),
+  saved_at timestamptz NOT NULL DEFAULT now(),
+  payload jsonb NOT NULL
+);

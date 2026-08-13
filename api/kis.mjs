@@ -115,20 +115,40 @@ export function calculateCciEma(closes, length = 20, emaLength = 13) {
   return { cci:cci.at(-1), ema:ema.at(-1), crossedUp:cci.length>1&&cci.at(-2)<=ema.at(-2)&&cci.at(-1)>ema.at(-1) };
 }
 export function selectCandidateStrategies(stocks, history, now = Date.now()) {
-  return stocks.flatMap((stock) => {
+  const rows=stocks.map((stock) => {
     const points = [...(history.get(stock.code) ?? []), { at:now, value:stock.program }].filter(point=>point.at>=now-15*60000);
     history.set(stock.code, points);
-    const start=[...points].reverse().find(point=>point.at<=now-5*60000), programRecent5=start?stock.program-start.value:null,
-      strategies=[
-        ...(programRecent5>0?["PROGRAM_MOMENTUM"]:[]),
-        ...(stock.foreign>0&&stock.institution>0?["SMART_MONEY_SYNC"]:[]),
-        ...(stock.changeRate<0&&stock.volumeRatio>=100&&stock.foreign+stock.institution>0?["VOLUME_REVERSAL"]:[]),
-        ...(stock.changeRate>0&&stock.volumeRatio>=120&&(stock.foreign+stock.institution>0||programRecent5>0)?["BREAKOUT_CONFIRM"]:[]),
-        ...(stock.envelopeReentry?["ENVELOPE_REVERSAL"]:[]),
-        ...(stock.cciCross?["CCI_EMA_CROSS"]:[]),
-      ];
-    return strategies.length?[{...stock,programRecent5,strategies,playbook:strategies[0]}]:[];
-  });
+    const start=[...points].reverse().find(point=>point.at<=now-5*60000);
+    return {...stock,programRecent5:start?stock.program-start.value:null};
+  }), pctl=(value,key)=>{const values=rows.map(key).filter(Number.isFinite).sort((a,b)=>a-b),rank=values.findLastIndex(item=>item<=value);return values.length<2?50:Math.round(rank/(values.length-1)*100)},
+    volumeScore=(rvol)=>rvol>=150&&rvol<=300?100:rvol>=120&&rvol<150?70:rvol>300&&rvol<=500?40:0;
+  return rows.flatMap(stock=>{
+    const tradingValue=Math.max(1,stock.amount), program5=stock.programRecent5??0,
+      normalizedProgram=program5*1000000/tradingValue,
+      normalizedForeign=stock.foreign*stock.price/tradingValue,
+      normalizedInstitution=stock.institution*stock.price/tradingValue,
+      programScore=pctl(normalizedProgram,row=>(row.programRecent5??0)*1000000/Math.max(1,row.amount)),
+      foreignScore=pctl(normalizedForeign,row=>row.foreign*row.price/Math.max(1,row.amount)), institutionScore=pctl(normalizedInstitution,row=>row.institution*row.price/Math.max(1,row.amount)),
+      persistence=program5>0?100:0, programFlow=.75*programScore+.25*persistence,
+      confirmation=.6*foreignScore+.4*institutionScore,
+      rs=pctl(stock.changeRate,row=>row.changeRate), momentum=rs,
+      volume=volumeScore(stock.volumeRatio), breakScore=.35*(stock.changeRate>0?100:0)+.30*(stock.volumeRatio>=120?100:0)+.20*rs+.15*(program5>0?100:0),
+      orderPressure=50,
+      trendScore=.25*momentum+.20*breakScore+.20*programFlow+.15*volume+.10*orderPressure+.10*confirmation,
+      oversold=pctl(-stock.changeRate,row=>-row.changeRate), programShift=programScore,
+      priceConfirm=[stock.changeRate>0,stock.programRecent5>0,stock.volumeRatio>=120].filter(Boolean).length/3*100,
+      reversalScore=.25*oversold+.25*programShift+.20*priceConfirm+.15*volume+.10*orderPressure+.05*confirmation,
+      riskPenalty=(stock.changeRate>=7?15:0)+(stock.volumeRatio>500?10:0)+(stock.price<2000?15:0),
+      liquidityScore=Math.round(.45*Math.min(100,tradingValue/10000000000*100)+27.5),
+      dataConfidence=[stock.programRecent5!==null,Number.isFinite(stock.foreign),Number.isFinite(stock.institution),stock.cci!==null].filter(Boolean).length*25,
+      confirmBonus=Math.min(10,(program5>0&&stock.foreign>0?4:0)+(program5>0&&stock.institution>0?3:0)+(program5>0&&stock.foreign>0&&stock.institution>0?3:0)),
+      ambiguous=Math.abs(trendScore-reversalScore)<5, strategy=trendScore>=reversalScore?"KIS_FPA_TREND":"KIS_FPA_REVERSAL",
+      fpaScore=Math.round(Math.max(0,Math.min(100,Math.max(trendScore,reversalScore)+confirmBonus-riskPenalty))),
+      recommended=fpaScore>=75&&programFlow>=60&&liquidityScore>=60&&dataConfidence>=75&&riskPenalty<20&&!ambiguous,
+      grade=recommended?(fpaScore>=85&&programFlow>=75&&dataConfidence>=85?"강력 추천":"추천"):fpaScore>=68?"진입 대기":"관찰",
+      qualified=fpaScore>=60&&liquidityScore>=60&&dataConfidence>=75&&riskPenalty<20;
+    return qualified?[{...stock,fpaScore,programScore:Math.round(programFlow),foreignScore,institutionScore,riskPenalty,liquidityScore,dataConfidence,trendScore:Math.round(trendScore),reversalScore:Math.round(reversalScore),confirmBonus,ambiguous,recommended,grade,strategies:[strategy],playbook:strategy}]:[];
+  }).sort((a,b)=>b.fpaScore-a.fpaScore);
 }
 export function normalizePublicUsIndices(rows = []) {
   const wanted = new Map([[".IXIC", ["COMP", "NASDAQ"]], [".INX", ["SPX", "S&P 500"]], [".DJI", [".DJI", "DOW"]]]);
@@ -143,7 +163,7 @@ export function normalizePublicUsIndices(rows = []) {
 export async function publicUsOverview() {
   const rows = await fetch("https://api.stock.naver.com/index/nation/USA").then((response) => response.ok ? response.json() : Promise.reject(new Error(`미국 지수 폴백 실패 (${response.status})`))),
     indices = normalizePublicUsIndices(rows),
-    leaders = (await Promise.all([["SOXL", "SOXL", "SOXL.A"], ["KORU", "KORU", "KORU.A"], ["SNDK", "SanDisk", "SNDK.O"]].map(async ([code, name, reutersCode]) => {
+    leaders = (await Promise.all([["SOXL", "SOXL", "SOXL.A"], ["KORU", "KORU", "KORU.A"], ["MU", "Micron", "MU.O"], ["SNDK", "SanDisk", "SNDK.O"], ["SKHY", "SK hynix ADR", "SKHY.O"]].map(async ([code, name, reutersCode]) => {
       const payload = await fetch(`https://polling.finance.naver.com/api/realtime/worldstock/stock/${reutersCode}`).then((response) => response.ok ? response.json() : Promise.reject()).catch(() => ({})), data = payload.datas?.[0] ?? {};
       const price = normalizeNumber(data.closePrice ?? data.price);
       return { code, name, price, changeRate: normalizeNumber(data.fluctuationsRatio), ...normalizePreMarket(data, price), personal: 0, foreign: 0, institution: 0, program: 0 };
@@ -265,12 +285,14 @@ export class KisClient {
     return normalizeFlow(investor.output ?? [], program.output ?? []);
   }
   async candidates() {
-    const rank = async (market, input) => normalizeRank((await this.get(
+    const kstHour=Number(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Seoul",hour:"2-digit",hourCycle:"h23"}).format(new Date())),
+      minimumTradingValue=kstHour<10?2000000000:kstHour<11?4000000000:kstHour<12?6000000000:10000000000,
+      rank = async (market, input) => normalizeRank((await this.get(
       "/uapi/domestic-stock/v1/quotations/volume-rank", "FHPST01710000",
       { FID_COND_MRKT_DIV_CODE:"J", FID_COND_SCR_DIV_CODE:"20171", FID_INPUT_ISCD:input, FID_DIV_CLS_CODE:"0", FID_BLNG_CLS_CODE:"0", FID_TRGT_CLS_CODE:"111111111", FID_TRGT_EXLS_CLS_CODE:"000000", FID_INPUT_PRICE_1:"", FID_INPUT_PRICE_2:"", FID_VOL_CNT:"", FID_INPUT_DATE_1:"" },
     )).output ?? [], market),
       universe = (await Promise.all([rank("KOSPI", "0001"), rank("KOSDAQ", "1001")])).flat().sort((a,b)=>b.amount-a.amount).slice(0,100),
-      priceCandidates = universe.filter(stock=>stock.price>=1000 && stock.changeRate>=-15 && stock.changeRate<=5).sort((a,b)=>Math.abs(a.changeRate)-Math.abs(b.changeRate) || b.volumeRatio-a.volumeRatio || b.amount-a.amount).slice(0,25),
+      priceCandidates = universe.filter(stock=>stock.price>=2000 && stock.amount>=minimumTradingValue && stock.changeRate>=-15 && stock.changeRate<=15).sort((a,b)=>b.amount-a.amount).slice(0,25),
       stocks = [];
     for (const stock of priceCandidates.slice(0,10)) {
       const [investorBody, programBody, chartBody] = await Promise.all([
@@ -367,8 +389,8 @@ export class KisClient {
       });
     }
     const leaders = [];
-    for (const [exchange, code, name, reutersCode] of [["AMS", "SOXL", "SOXL", "SOXL.A"], ["AMS", "KORU", "KORU", "KORU.A"], ["NAS", "SNDK", "SanDisk", "SNDK.O"]]) {
-      const body = await this.get(
+    for (const [exchange, code, name, reutersCode] of [["AMS", "SOXL", "SOXL", "SOXL.A"], ["AMS", "KORU", "KORU", "KORU.A"], ["NAS", "MU", "Micron", "MU.O"], ["NAS", "SNDK", "SanDisk", "SNDK.O"], ["NAS", "SKHY", "SK hynix ADR", "SKHY.O"]]) {
+      try { const body = await this.get(
         "/uapi/overseas-price/v1/quotations/price",
         "HHDFS00000300",
         { AUTH: "", EXCD: exchange, SYMB: code },
@@ -378,6 +400,7 @@ export class KisClient {
           .then((payload) => normalizePreMarket(payload.datas?.[0] ?? {}, regular.price))
           .catch(() => null);
       leaders.push({ code, name, ...regular, ...preMarket, personal: 0, foreign: 0, institution: 0, program: 0 });
+      } catch (error) { console.error(`[NASDAQ ${code}]`, error?.message ?? error); }
     }
     const end = new Date(), start = new Date(end);
     start.setDate(start.getDate() - 10);

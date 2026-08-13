@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { health, migrate, pool, readMarket } from "./db.mjs";
+import { health, migrate, pool, readCandidates, readMarket, saveCandidates } from "./db.mjs";
 import { accurateHistoryStart } from "./session.mjs";
 import { configured, KisClient, publicUsOverview, resetLeaderFlows, searchUsStocks, selectCandidateStrategies } from "./kis.mjs";
 
@@ -13,7 +13,14 @@ const candidateHistory = new Map();
 async function refreshCandidates() {
   try {
     const savedAt=Date.now(), raw=await new KisClient().candidates();
-    candidateCache={savedAt,body:{...raw,stocks:selectCandidateStrategies(raw.stocks,candidateHistory,savedAt),trackingCount:raw.stocks.length}};
+    if (raw.universeCount>0) {
+      const body={...raw,stocks:selectCandidateStrategies(raw.stocks,candidateHistory,savedAt),trackingCount:raw.stocks.length};
+      candidateCache={savedAt,body};
+      await saveCandidates(body);
+    } else {
+      const saved=await readCandidates();
+      if (saved) candidateCache={savedAt,body:{...saved.payload,source:`${saved.payload.source} · 마지막 정상 후보`,preserved:true,preservedAt:saved.savedAt}};
+    }
   } catch (error) {
     console.error("[candidates]", error);
   } finally {
@@ -40,6 +47,8 @@ function responseWithHistory(market, rows) {
 }
 
 await migrate();
+const savedCandidates=await readCandidates();
+if (savedCandidates) candidateCache={savedAt:0,body:{...savedCandidates.payload,source:`${savedCandidates.payload.source} · 마지막 정상 후보`,preserved:true,preservedAt:savedCandidates.savedAt}};
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", "http://localhost");

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BrainCircuit,
   ChartNoAxesCombined,
@@ -26,6 +26,8 @@ import Watchlist from "./Watchlist";
 import type { SearchableStock } from "./StockAnalysis";
 import type { EndedObservation, EntryRecord, Observation } from "./Watchlist";
 import { apiUrl } from "./api";
+import ThemeButton from "./ThemeButton";
+import { isMorningPreparationTime, isNightForecastTime, nightForecast } from "./nightForecast";
 
 type Tab = "Flow" | "AI" | "Watch" | "Feed" | "Me";
 type Market = "KOSPI" | "KOSDAQ" | "NASDAQ";
@@ -537,16 +539,27 @@ function MarketDashboard({
     : [],
     samsung = data?.leaders?.find((stock) => stock.name.includes("삼성전자")),
     hynix = data?.leaders?.find((stock) => stock.name.includes("하이닉스")),
+    nightMode = isNightForecastTime(),
+    forecastBucket = Math.floor(Date.now()/600000),
+    morningPreparation = market !== "NASDAQ" && isMorningPreparationTime(),
+    forecasts = useMemo(()=>({
+      samsung:nightMode?nightForecast(samsung,markets.NASDAQ,"samsung"):null,
+      hynix:nightMode?nightForecast(hynix,markets.NASDAQ,"hynix"):null,
+    }),[forecastBucket,nightMode]),
+    samsungForecast=forecasts.samsung,
+    hynixForecast=forecasts.hynix,
     stockInvestorPending = "장중 미제공",
     stockInvestorReady = (stock: NonNullable<MarketFlow["leaders"]>[number] | undefined) => Boolean(stock?.investorAvailable),
     stockPrice = (stock: NonNullable<MarketFlow["leaders"]>[number] | undefined, fallback: string) => stock ? `${stock.price.toLocaleString("ko-KR")}원 · ${stock.changeRate >= 0 ? "+" : ""}${stock.changeRate.toFixed(1)}%` : fallback,
+    forecastRate = (price:number,stock:typeof samsung) => {const rate=stock?(price/stock.price-1)*100:0;return `${rate>=0?"▲":"▼"}${Math.abs(rate).toFixed(2)}%`},
     signalStatus = (stock: typeof samsung) => !stock || stock.program === 0 ? "수집 시작" : stock.program > 0 ? "매수 흐름" : "주의 관찰",
     signalCopy = (stock: typeof samsung) => !stock ? "실데이터를 수집하고 있습니다." : `08:00 이후 프로그램 ${direction(stock.program)} ${formatEok(Math.abs(stock.program),false)}억원 · 외국인 ${stockInvestorReady(stock)?`${direction(stock.foreign)} ${Math.abs(stock.foreign).toLocaleString("ko-KR")}주`:stockInvestorPending}`;
   return (
     <div className="capture-area fp-dashboard" ref={captureRef}>
       <header className="fp-header">
-        <div><small>FLOW HOME</small><h1>오늘의 시장 흐름</h1></div>
+        <div><small>FLOWPULSE HOME</small><h1>오늘의 시장 흐름</h1></div>
         <span><b>● 정상 수집</b> · 1분 누적 {data?.collection?.stored ?? 0}개 · {asOf} 기준</span>
+        <ThemeButton/>
         <button className="capture-button" onClick={capture} disabled={capturing} aria-label="화면 저장"><Download/></button>
       </header>
       <div className="segments fp-market-tabs">
@@ -581,7 +594,11 @@ function MarketDashboard({
               <span><small>100엔/원</small> {data.forex.jpyKrw.toLocaleString("ko-KR", {minimumFractionDigits:2, maximumFractionDigits:2})}원 <i className={data.forex.jpyChange >= 0 ? "up" : "down"}>{data.forex.jpyChange >= 0 ? "▲" : "▼"}{Math.abs(data.forex.jpyChange).toFixed(2)}원</i></span>
             </section>
           )}
-          <section className="market-verdict fp-verdict">
+          {morningPreparation ? <section className="market-verdict fp-verdict morning-preparation">
+            <small>FLOWPULSE AI BRIEFING</small>
+            <h1>오늘 장 수급 분석을 준비하고 있습니다.</h1>
+            <p>오전 08:00 첫 수집부터 새로운 수급 신호와 신뢰도를 표시합니다.</p>
+          </section> : <><section className="market-verdict fp-verdict">
             <small>FLOWPULSE AI BRIEFING</small>
             <h1>{market === "NASDAQ" ? usBrief : insight!.text}</h1>
             <p>{asOf} 기준 · 데이터·신호 신뢰도 {confidence}/100 · 상승 확률이 아닌 현재 신호의 신뢰 수준</p>
@@ -596,6 +613,7 @@ function MarketDashboard({
             <article><span>Flow Confidence</span><strong>{confidence} / 100</strong><small>데이터·신호 신뢰도</small></article>
             <article><span>가장 중요한 변화</span><strong>{market === "NASDAQ" ? usLabel : insight!.label}</strong><small>{market === "NASDAQ" ? "미국 3대 지수" : "외국인·기관·프로그램 종합"}</small></article>
           </section>
+          </>}
           <div className="fp-section-title"><h2>실시간 수급 스냅샷</h2><span>매일 08:00 리셋 · 1분 자동 갱신</span></div>
           <div className="flow-cards">
             {market !== "NASDAQ" && actors.map(([name, total, delta, tone]) => (
@@ -640,15 +658,17 @@ function MarketDashboard({
             <div className="fp-signal-grid">
               <article className="fp-signal-card">
                 <header><div><small>PROGRAM FLOW</small><h3>삼성전자</h3></div><b>{signalStatus(samsung)}</b></header>
-                <p>{signalCopy(samsung)} · 외국인·기관은 장중 추정 집계</p>
-                <dl><div><dt>현재가</dt><dd>{stockPrice(samsung,"수집 중")}</dd></div><div><dt>프로그램</dt><dd className={samsung?.program! >= 0 ? "positive" : "negative"}>{samsung ? direction(samsung.program) : "수집 중"}</dd></div><div><dt>기관</dt><dd>{samsung && stockInvestorReady(samsung) ? direction(samsung.institution) : stockInvestorPending}</dd></div></dl>
-                <footer>08:00 첫 수집값을 0으로 두고 이후 변화량을 표시합니다.</footer>
+                {!nightMode&&<><p>{signalCopy(samsung)} · 외국인·기관은 장중 추정 집계</p>
+                <dl><div><dt>현재가</dt><dd>{stockPrice(samsung,"수집 중")}</dd></div><div><dt>개인</dt><dd>{samsung?.personalAvailable===false?stockInvestorPending:samsung?direction(samsung.personal):"수집 중"}</dd></div><div><dt>외국인</dt><dd>{samsung&&stockInvestorReady(samsung)?direction(samsung.foreign):stockInvestorPending}</dd></div><div><dt>기관</dt><dd>{samsung&&stockInvestorReady(samsung)?direction(samsung.institution):stockInvestorPending}</dd></div><div><dt>프로그램</dt><dd className={samsung?.program! >= 0 ? "positive" : "negative"}>{samsung?direction(samsung.program):"수집 중"}</dd></div></dl>
+                <footer>08:00 첫 수집값을 0으로 두고 이후 변화량을 표시합니다.</footer></>}
+                {samsungForecast&&<div className={`night-forecast${nightMode?" night-only":""}`}><b>Flow Forecast　 예상 시초가 {samsungForecast.open.toLocaleString()}원 <em>{forecastRate(samsungForecast.open,samsung)}</em></b><span>고가 {samsungForecast.high.toLocaleString()}원 <em>{forecastRate(samsungForecast.high,samsung)}</em>　·　저가 {samsungForecast.low.toLocaleString()}원 <em>{forecastRate(samsungForecast.low,samsung)}</em>　·　종가 {samsungForecast.close.toLocaleString()}원 <em>{forecastRate(samsungForecast.close,samsung)}</em></span></div>}
               </article>
               <article className="fp-signal-card caution">
                 <header><div><small>PROGRAM FLOW</small><h3>SK하이닉스</h3></div><b>{signalStatus(hynix)}</b></header>
-                <p>{signalCopy(hynix)} · 외국인·기관은 장중 추정 집계</p>
-                <dl><div><dt>현재가</dt><dd>{stockPrice(hynix,"수집 중")}</dd></div><div><dt>프로그램</dt><dd className={hynix?.program! >= 0 ? "positive" : "negative"}>{hynix ? direction(hynix.program) : "수집 중"}</dd></div><div><dt>기관</dt><dd>{hynix && stockInvestorReady(hynix) ? direction(hynix.institution) : stockInvestorPending}</dd></div></dl>
-                <footer>08:00 첫 수집값을 0으로 두고 이후 변화량을 표시합니다.</footer>
+                {!nightMode&&<><p>{signalCopy(hynix)} · 외국인·기관은 장중 추정 집계</p>
+                <dl><div><dt>현재가</dt><dd>{stockPrice(hynix,"수집 중")}</dd></div><div><dt>개인</dt><dd>{hynix?.personalAvailable===false?stockInvestorPending:hynix?direction(hynix.personal):"수집 중"}</dd></div><div><dt>외국인</dt><dd>{hynix&&stockInvestorReady(hynix)?direction(hynix.foreign):stockInvestorPending}</dd></div><div><dt>기관</dt><dd>{hynix&&stockInvestorReady(hynix)?direction(hynix.institution):stockInvestorPending}</dd></div><div><dt>프로그램</dt><dd className={hynix?.program! >= 0 ? "positive" : "negative"}>{hynix?direction(hynix.program):"수집 중"}</dd></div></dl>
+                <footer>08:00 첫 수집값을 0으로 두고 이후 변화량을 표시합니다.</footer></>}
+                {hynixForecast&&<div className={`night-forecast${nightMode?" night-only":""}`}><b>Flow Forecast　 예상 시초가 {hynixForecast.open.toLocaleString()}원 <em>{forecastRate(hynixForecast.open,hynix)}</em></b><span>고가 {hynixForecast.high.toLocaleString()}원 <em>{forecastRate(hynixForecast.high,hynix)}</em>　·　저가 {hynixForecast.low.toLocaleString()}원 <em>{forecastRate(hynixForecast.low,hynix)}</em>　·　종가 {hynixForecast.close.toLocaleString()}원 <em>{forecastRate(hynixForecast.close,hynix)}</em></span></div>}
               </article>
             </div>
           </section>}

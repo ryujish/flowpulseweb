@@ -5,6 +5,7 @@ ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 API_URL=http://127.0.0.1:8789/api/health
 WEB_URL=http://127.0.0.1:4173
 LOG_FILE="$ROOT_DIR/.cache/local-preview.log"
+FORCE_RESTART=${1:-}
 
 healthy() { curl -fsS --max-time 2 "$API_URL" >/dev/null; }
 stop_port() {
@@ -14,7 +15,7 @@ stop_port() {
 }
 
 cd "$ROOT_DIR"
-if healthy && curl -fsS --max-time 2 "$WEB_URL" >/dev/null; then
+if [ "$FORCE_RESTART" != "--restart" ] && healthy && curl -fsS --max-time 2 "$WEB_URL" >/dev/null; then
   printf '로컬 서버가 정상입니다: %s\n' "$WEB_URL"
 else
   printf '로컬 서버가 응답하지 않아 재시작합니다.\n'
