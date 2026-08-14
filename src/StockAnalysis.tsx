@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, Check, Download, Search, Star, X } from "lucide-react";
 import { toPng } from "html-to-image";
+import { saveImage } from "./saveImage";
 import "./stock-analysis.css";
 import { apiUrl } from "./api";
 import ThemeButton from "./ThemeButton";
@@ -58,8 +59,8 @@ export default function StockAnalysis({stocks=[],candidateMeta,observedCodes=[],
       if (!captureRef.current || capturing) return;
       setCapturing(true);
       try {
-        const url = await toPng(captureRef.current,{pixelRatio:2,cacheBust:true,backgroundColor:getComputedStyle(document.body).backgroundColor,filter:node=>!(node instanceof HTMLElement&&node.classList.contains("capture-button"))}), link = document.createElement("a");
-        link.download = `FlowPulse-${selected.code}-${new Date().toISOString().slice(0,10)}.png`; link.href = url; link.click();
+        const url = await toPng(captureRef.current,{pixelRatio:2,cacheBust:true,backgroundColor:getComputedStyle(document.body).backgroundColor,filter:node=>!(node instanceof HTMLElement&&node.classList.contains("capture-button"))});
+        await saveImage(url,`FlowPulse-${selected.code}-${new Date().toISOString().slice(0,10)}.png`);
       } finally { setCapturing(false); }
     };
   useEffect(()=>{

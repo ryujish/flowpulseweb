@@ -27,6 +27,7 @@ import type { SearchableStock } from "./StockAnalysis";
 import type { EndedObservation, EntryRecord, Observation } from "./Watchlist";
 import { apiUrl } from "./api";
 import ThemeButton from "./ThemeButton";
+import { saveImage } from "./saveImage";
 import { isMorningPreparationTime, isNightForecastTime, isUsExtendedMarketOpen, nightForecast } from "./nightForecast";
 
 type Tab = "Flow" | "AI" | "Watch" | "Feed" | "Me";
@@ -483,11 +484,8 @@ function MarketDashboard({
             pixelRatio: 2,
             cacheBust: true,
             filter: (node) => !(node instanceof HTMLElement && node.classList.contains("capture-button")),
-          }),
-          link = document.createElement("a");
-        link.download = `FlowPulse-${market}-${new Date().toISOString().slice(0,10)}.png`;
-        link.href = url;
-        link.click();
+          });
+        await saveImage(url,`FlowPulse-${market}-${new Date().toISOString().slice(0,10)}.png`);
       } finally {
         captureRef.current?.classList.remove("exporting");
         setCapturing(false);
