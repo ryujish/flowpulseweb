@@ -51,6 +51,14 @@ export function normalizePrice(output = {}) {
     twentyDay: 0,
   };
 }
+export function normalizeOpeningQuote(nxt={},nxtBook={},auction={}) {
+  const nxtPrice=normalizeNumber(nxt.stck_prpr),ask=normalizeNumber(nxtBook.askp1),bid=normalizeNumber(nxtBook.bidp1),auctionPrice=normalizeNumber(auction.antc_cnpr);
+  return {
+    nxtPrice:nxtPrice||null,nxtChangeRate:nxtPrice?normalizeNumber(nxt.prdy_ctrt):null,nxtAmount:normalizeNumber(nxt.acml_tr_pbmn),
+    nxtSpread:ask&&bid?(ask-bid)/((ask+bid)/2)*100:0,nxtAskQuantity:normalizeNumber(nxtBook.total_askp_rsqn),nxtBidQuantity:normalizeNumber(nxtBook.total_bidp_rsqn),
+    auctionPrice:auctionPrice||null,auctionVolume:normalizeNumber(auction.antc_vol),auctionAskQuantity:normalizeNumber(auction.total_askp_rsqn),auctionBidQuantity:normalizeNumber(auction.total_bidp_rsqn),
+  };
+}
 export function normalizeOverseasPrice(output = {}) {
   return {
     price: normalizeNumber(output.last),
@@ -285,7 +293,7 @@ export class KisClient {
     return normalizeFlow(investor.output ?? [], program.output ?? []);
   }
   async candidates() {
-    const kstHour=Number(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Seoul",hour:"2-digit",hourCycle:"h23"}).format(new Date())),
+    const kstParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Seoul",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).map(part=>[part.type,Number(part.value)])),kstHour=kstParts.hour,kstMinutes=kstHour*60+kstParts.minute,opening=kstMinutes>=480&&kstMinutes<545,
       minimumTradingValue=kstHour<10?2000000000:kstHour<11?4000000000:kstHour<12?6000000000:10000000000,
       rank = async (market, input) => normalizeRank((await this.get(
       "/uapi/domestic-stock/v1/quotations/volume-rank", "FHPST01710000",
@@ -295,14 +303,17 @@ export class KisClient {
       priceCandidates = universe.filter(stock=>stock.price>=2000 && stock.amount>=minimumTradingValue && stock.changeRate>=-15 && stock.changeRate<=15).sort((a,b)=>b.amount-a.amount).slice(0,25),
       stocks = [];
     for (const stock of priceCandidates.slice(0,10)) {
-      const [investorBody, programBody, chartBody] = await Promise.all([
+      const [investorBody, programBody, chartBody,nxtPriceBody,nxtBookBody,auctionBody] = await Promise.all([
         this.get("/uapi/domestic-stock/v1/quotations/inquire-investor", "FHKST01010900", { FID_COND_MRKT_DIV_CODE:"J", FID_INPUT_ISCD:stock.code }).catch(()=>({output:[]})),
         this.get("/uapi/domestic-stock/v1/quotations/program-trade-by-stock", "FHPPG04650101", { FID_COND_MRKT_DIV_CODE:"UN", FID_INPUT_ISCD:stock.code }).catch(()=>({output:[]})),
         this.get("/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice", "FHKST03010200", { FID_ETC_CLS_CODE:"", FID_COND_MRKT_DIV_CODE:"UN", FID_INPUT_ISCD:stock.code, FID_INPUT_HOUR_1:new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Seoul",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date()).replaceAll(":",""), FID_PW_DATA_INCU_YN:"Y" }).catch(()=>({output2:[]})),
+        opening?this.get("/uapi/domestic-stock/v1/quotations/inquire-price","FHKST01010100",{FID_COND_MRKT_DIV_CODE:"NX",FID_INPUT_ISCD:stock.code}).catch(()=>({output:{}})):Promise.resolve({output:{}}),
+        opening?this.get("/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn","FHKST01010200",{FID_COND_MRKT_DIV_CODE:"NX",FID_INPUT_ISCD:stock.code}).catch(()=>({output1:{}})):Promise.resolve({output1:{}}),
+        opening&&kstMinutes>=530?this.get("/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn","FHKST01010200",{FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:stock.code}).catch(()=>({output2:{}})):Promise.resolve({output2:{}}),
       ]), investor = investorBody.output?.[0] ?? {},
         closes=(chartBody.output2??[]).map(row=>normalizeNumber(row.stck_prpr)).filter(Boolean).reverse(), indicator=calculateCciEma(closes),
         current=closes.at(-1),previous=closes.at(-2),currentMean=closes.slice(-20).reduce((sum,value)=>sum+value,0)/20,previousMean=closes.slice(-21,-1).reduce((sum,value)=>sum+value,0)/20;
-      stocks.push({ ...stock, ...normalizeInvestorQuantity(investor), program:normalizeNumber(programBody.output?.[0]?.whol_smtn_ntby_tr_pbmn)/1000000, cci:indicator?.cci??null, cciEma:indicator?.ema??null, cciCross:indicator?.crossedUp??false, envelopeReentry:Boolean(closes.length>=21&&previous<=previousMean*.98&&current>currentMean*.98) });
+      stocks.push({ ...stock,...normalizeOpeningQuote(nxtPriceBody.output??{},nxtBookBody.output1??{},auctionBody.output2??{}), ...normalizeInvestorQuantity(investor), program:normalizeNumber(programBody.output?.[0]?.whol_smtn_ntby_tr_pbmn)/1000000, cci:indicator?.cci??null, cciEma:indicator?.ema??null, cciCross:indicator?.crossedUp??false, envelopeReentry:Boolean(closes.length>=21&&previous<=previousMean*.98&&current>currentMean*.98) });
     }
     return { live:true, source:"KIS 거래대금·수급", calculatedAt:new Date().toISOString(), universeCount:universe.length, priceCount:priceCandidates.length, stocks:stocks.sort((a,b)=>Math.abs(b.program)-Math.abs(a.program) || Math.abs(b.foreign+b.institution)-Math.abs(a.foreign+a.institution)) };
   }

@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { health, migrate, pool, readCandidates, readMarket, saveCandidates } from "./db.mjs";
 import { accurateHistoryStart } from "./session.mjs";
 import { configured, KisClient, publicUsOverview, resetLeaderFlows, searchUsStocks, selectCandidateStrategies } from "./kis.mjs";
+import { candidatePhase, selectOpeningCandidates } from "./opening.mjs";
 
 const port = Number(process.env.FLOWPULSE_API_PORT) || 8789,
   json = (res, status, body) => {
@@ -14,7 +15,7 @@ async function refreshCandidates() {
   try {
     const savedAt=Date.now(), raw=await new KisClient().candidates();
     if (raw.universeCount>0) {
-      const body={...raw,stocks:selectCandidateStrategies(raw.stocks,candidateHistory,savedAt),trackingCount:raw.stocks.length};
+      const phase=candidatePhase(new Date(savedAt)),body={...raw,...phase,stocks:phase.id==="FPA"?selectCandidateStrategies(raw.stocks,candidateHistory,savedAt):selectOpeningCandidates(raw.stocks,candidateHistory,savedAt),trackingCount:raw.stocks.length};
       candidateCache={savedAt,body};
       await saveCandidates(body);
     } else {

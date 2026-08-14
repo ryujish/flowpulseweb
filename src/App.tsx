@@ -74,7 +74,7 @@ function useMarkets() {
   };
 }
 function useCandidates() {
-  const [data,setData] = useState<{stocks:SearchableStock[];universeCount:number;priceCount:number;calculatedAt?:string}>({stocks:[],universeCount:0,priceCount:0});
+  const [data,setData] = useState<{stocks:SearchableStock[];universeCount:number;priceCount:number;calculatedAt?:string;id?:string;title?:string;status?:string;recommended?:boolean}>({stocks:[],universeCount:0,priceCount:0});
   useEffect(()=>{let cancelled=false;const load=async()=>{try{const response=await fetch(apiUrl("/api/candidates")),body=await response.json();if(!cancelled&&response.ok&&body.live)setData(body);}catch{}};load();const timer=setInterval(load,60000);return()=>{cancelled=true;clearInterval(timer)}},[]);
   return data;
 }

@@ -7,7 +7,7 @@ import { apiUrl } from "./api";
 import ThemeButton from "./ThemeButton";
 
 type StockView = "가격·수급 차트" | "수급 분석" | "판단 근거";
-export type SearchableStock = { code:string; name:string; market:string; price:number; changeRate:number; personal:number; foreign:number; institution:number; program:number; programRecent5?:number|null; strategies?:string[]; playbook?:string; cci?:number|null; cciEma?:number|null; fpaScore?:number; programScore?:number; foreignScore?:number; institutionScore?:number; riskPenalty?:number; liquidityScore?:number; dataConfidence?:number; trendScore?:number; reversalScore?:number; confirmBonus?:number; ambiguous?:boolean; recommended?:boolean; grade?:string };
+export type SearchableStock = { code:string; name:string; market:string; price:number; changeRate:number; personal:number; foreign:number; institution:number; program:number; programRecent5?:number|null; strategies?:string[]; playbook?:string; algorithm?:"OPA"; opaScore?:number; nxtScore?:number|null; nxtChangeRate?:number|null; nxtAmount?:number; nxtSpread?:number; auctionScore?:number|null; auctionPrice?:number|null; auctionVolume?:number; venueAgreement?:number|null; venueGap?:number|null; prevScore?:number; cci?:number|null; cciEma?:number|null; fpaScore?:number; programScore?:number; foreignScore?:number; institutionScore?:number; riskPenalty?:number; liquidityScore?:number; dataConfidence?:number; trendScore?:number; reversalScore?:number; confirmBonus?:number; ambiguous?:boolean; recommended?:boolean; grade?:string };
 type DetailPoint = {time:string;price:number;personal:number|null;foreign:number;institution:number;program:number};
 
 const fallbackStocks:SearchableStock[] = [
@@ -22,6 +22,7 @@ const linePath=(values:number[],width=90,height=24)=>{const min=Math.min(...valu
   deltaAt=(points:DetailPoint[],key:Exclude<keyof DetailPoint,"time">,minutes:number)=>{const last=points.at(-1),target=last&&[...points].reverse().find(point=>new Date(point.time).getTime()<=new Date(last.time).getTime()-minutes*60000);return last&&target&&last[key]!==null&&target[key]!==null?Number(last[key])-Number(target[key]):null};
 
 const playbooks:Record<string,[string,string]> = {
+  OPA:["OPENING PREDICTION ALPHA","개장 관심 후보"],
   KIS_FPA_TREND:["KIS-FPA TREND","추세형 후보"],
   KIS_FPA_REVERSAL:["KIS-FPA REVERSAL","반전형 후보"],
   PROGRAM_MOMENTUM:["PROGRAM MOMENTUM","최근 5분 프로그램 순매수·가속"],
@@ -32,7 +33,7 @@ const playbooks:Record<string,[string,string]> = {
   CCI_EMA_CROSS:["CCI + EMA","CCI 20 · EMA 13 상향 교차"],
 };
 
-export default function StockAnalysis({stocks=[],candidateMeta,observedCodes=[],favoriteCodes=[],onWatch,onOpenWatch,onFavorite}:{stocks?:SearchableStock[];candidateMeta?:{universeCount:number;priceCount:number;calculatedAt?:string};observedCodes?:string[];favoriteCodes?:string[];onWatch?:(stock:SearchableStock)=>void;onOpenWatch?:()=>void;onFavorite?:(stock:SearchableStock)=>void}) {
+export default function StockAnalysis({stocks=[],candidateMeta,observedCodes=[],favoriteCodes=[],onWatch,onOpenWatch,onFavorite}:{stocks?:SearchableStock[];candidateMeta?:{universeCount:number;priceCount:number;calculatedAt?:string;id?:string;title?:string;status?:string;recommended?:boolean};observedCodes?:string[];favoriteCodes?:string[];onWatch?:(stock:SearchableStock)=>void;onOpenWatch?:()=>void;onFavorite?:(stock:SearchableStock)=>void}) {
   const [usStocks,setUsStocks] = useState<SearchableStock[]>([]),
     available = [...stocks,...fallbackStocks.filter(stock=>!stocks.some(candidate=>candidate.code===stock.code)),...usStocks],
     captureRef = useRef<HTMLDivElement>(null), [capturing,setCapturing] = useState(false),
@@ -50,8 +51,8 @@ export default function StockAnalysis({stocks=[],candidateMeta,observedCodes=[],
       ["기관","institution","주","institution"],
       ["개인","personal","주","personal"],
     ] as const).map(([name,key,unit,tone])=>{const unavailable=key==="personal"&&detailPoints.at(-1)?.personal===null,five=deltaAt(detailPoints,key,5),fifteen=deltaAt(detailPoints,key,15),total=unavailable?null:selected[key],values=detailPoints.flatMap(point=>point[key]===null?[]:[Number(point[key])]),shift=total===null?"미제공":Number(total)>0?"순매수":"순매도",format=(value:number|null)=>unavailable?"미제공":value===null?"수집 대기":unit==="억원"?programText(value):signed(value,unit);return [name,format(five),format(fifteen),format(total===null?null:Number(total)),shift,"-",tone,linePath(values.slice(-20))] as const}),
-    observed = observedCodes.includes(selected.code),
-    candidateStocks = stocks.filter(stock=>candidateFilter==="전체" || candidateFilter==="프로그램"&&stock.programRecent5!>0 || candidateFilter==="외국인"&&stock.foreign>0 || candidateFilter==="기관"&&stock.institution>0 || candidateFilter==="복합수급"&&[stock.programRecent5??0,stock.foreign,stock.institution].filter(value=>value>0).length>=2).slice(0,10),
+    observed = observedCodes.includes(selected.code), preOpen=candidateMeta?.id?.startsWith("OPA")||candidateMeta?.id==="OPEN_VERIFY",
+    candidateStocks = stocks.filter(stock=>preOpen || candidateFilter==="전체" || candidateFilter==="프로그램"&&stock.programRecent5!>0 || candidateFilter==="외국인"&&stock.foreign>0 || candidateFilter==="기관"&&stock.institution>0 || candidateFilter==="복합수급"&&[stock.programRecent5??0,stock.foreign,stock.institution].filter(value=>value>0).length>=2).slice(0,10),
     choose = (stock:SearchableStock) => {setSelected(stock);setQuery("");setView("판단 근거");setScreen("analysis");},
     startObservation = (stock:SearchableStock) => { setSelected(stock); observedCodes.includes(stock.code) ? onOpenWatch?.() : setSheetOpen(true); },
     confirmObservation = () => { setSheetOpen(false); onWatch?.(selected); },
@@ -86,15 +87,15 @@ export default function StockAnalysis({stocks=[],candidateMeta,observedCodes=[],
     <header className="stock-header"><div><small>STOCK ANALYSIS</small><h1>종목 분석</h1></div><div className="stock-header-actions"><span><b>● 정상 수집</b> · {asOfText} 기준</span><ThemeButton/><button className="capture-button" onClick={capture} disabled={capturing} aria-label="화면 저장"><Download/></button></div></header>
     <div className="stock-mode-tabs" role="tablist"><button role="tab" aria-selected={screen==="candidates"} className={screen==="candidates"?"active":""} onClick={()=>setScreen("candidates")}>관찰 후보</button><button role="tab" aria-selected={screen==="analysis"} className={screen==="analysis"?"active":""} onClick={()=>setScreen("analysis")}>종목 검색</button></div>
     {screen === "candidates" ? <section className="candidate-screen">
-      <div className="candidate-head"><div><h2>관찰 후보</h2><p>거래대금 상위 {candidateMeta?.universeCount?candidateMeta.universeCount+"개":"수집 중"} → 가격 조건 {candidateMeta?.priceCount?candidateMeta.priceCount+"개":"-"} → 병렬 전략 후보 {stocks.length?stocks.length+"개":"수집 중"} · {candidateMeta?.calculatedAt?new Date(candidateMeta.calculatedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}):"갱신 중"} 기준</p></div><span>● {stocks.length?"실시간 정상":"전략 신호 계산 중"}</span></div>
-      <div className="candidate-filters">{["전체","프로그램","외국인","기관","복합수급"].map(item=><button className={candidateFilter===item?"active":""} onClick={()=>setCandidateFilter(item)} aria-pressed={candidateFilter===item} key={item}>{item}</button>)}</div>
+      <div className="candidate-head"><div><h2>{candidateMeta?.title??"관찰 후보"}</h2><p>거래대금 상위 {candidateMeta?.universeCount?candidateMeta.universeCount+"개":"수집 중"} → 가격 조건 {candidateMeta?.priceCount?candidateMeta.priceCount+"개":"-"} → {candidateMeta?.id?.startsWith("OPA")||candidateMeta?.id==="OPEN_VERIFY"?"OPA 후보":"병렬 전략 후보"} {stocks.length?stocks.length+"개":"수집 중"} · {candidateMeta?.calculatedAt?new Date(candidateMeta.calculatedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}):"갱신 중"} 기준</p></div><span>● {candidateMeta?.status??(stocks.length?"실시간 정상":"전략 신호 계산 중")}</span></div>
+      {!candidateMeta?.id?.startsWith("OPA")&&candidateMeta?.id!=="OPEN_VERIFY"&&<div className="candidate-filters">{["전체","프로그램","외국인","기관","복합수급"].map(item=><button className={candidateFilter===item?"active":""} onClick={()=>setCandidateFilter(item)} aria-pressed={candidateFilter===item} key={item}>{item}</button>)}</div>}
       <div className="candidate-list">{candidateStocks.map((stock,index)=>{
         const isObserved=observedCodes.includes(stock.code),isBullish=(stock.programRecent5??0)>0,playbook=playbooks[stock.playbook??""]??["FLOW WATCH","복합 수급 관찰"];
         return <article className="stock-surface candidate-card" key={stock.code}>
           <div className="candidate-rank">{index+1}</div>
           <div className="candidate-title"><div><h3>{stock.name}</h3><small>{stock.code} · {stock.market}</small></div><div><b>{playbook[0]}</b><span>{playbook[1]}</span></div></div>
-          <dl><div><dt>KIS-FPA</dt><dd>{stock.fpaScore??"-"} · {stock.grade??"관찰"}</dd></div><div><dt>프로그램</dt><dd>{stock.programScore??"-"} / 100</dd></div><div><dt>외국인 추정</dt><dd>{stock.foreignScore??"-"} / 100</dd></div><div><dt>기관 추정</dt><dd>{stock.institutionScore??"-"} / 100</dd></div><div><dt>유동성 · 신뢰도</dt><dd>{stock.liquidityScore??"-"} · {stock.dataConfidence??"-"}</dd></div><div><dt>위험 감점</dt><dd>-{stock.riskPenalty??0}</dd></div></dl>
-          <p>반대 근거 · {stock.foreign<0?"외국인 순매도 지속":"거래량 회복 미확인"}</p><div className="candidate-actions"><button onClick={()=>choose(stock)}>분석 보기</button><button onClick={()=>startObservation(stock)}>{isObserved?"관찰 중 · 보기":"관찰 시작"}</button></div>
+          {stock.algorithm==="OPA"?<dl><div><dt>OPA</dt><dd>{stock.opaScore??"-"} · {stock.grade}</dd></div><div><dt>NXT</dt><dd>{stock.nxtScore??"수집 대기"} {stock.nxtChangeRate!==null&&stock.nxtChangeRate!==undefined?`· ${stock.nxtChangeRate>=0?"+":""}${stock.nxtChangeRate.toFixed(2)}%`:""}</dd></div><div><dt>KRX 예상체결</dt><dd>{stock.auctionScore??"08:50부터"}</dd></div><div><dt>시장 간 가격 차이</dt><dd>{stock.venueGap===null||stock.venueGap===undefined?"확인 대기":`${stock.venueGap.toFixed(2)}% · ${stock.venueGap<=1.5?"방향 확인":"추천 보류"}`}</dd></div><div><dt>유동성 · 신뢰도</dt><dd>{stock.liquidityScore??"-"} · {stock.dataConfidence??"-"}</dd></div><div><dt>위험 감점</dt><dd>-{stock.riskPenalty??0}</dd></div></dl>:<dl><div><dt>KIS-FPA</dt><dd>{stock.fpaScore??"-"} · {stock.grade??"관찰"}</dd></div><div><dt>프로그램</dt><dd>{stock.programScore??"-"} / 100</dd></div><div><dt>외국인 추정</dt><dd>{stock.foreignScore??"-"} / 100</dd></div><div><dt>기관 추정</dt><dd>{stock.institutionScore??"-"} / 100</dd></div><div><dt>유동성 · 신뢰도</dt><dd>{stock.liquidityScore??"-"} · {stock.dataConfidence??"-"}</dd></div><div><dt>위험 감점</dt><dd>-{stock.riskPenalty??0}</dd></div></dl>}
+          <p>{stock.algorithm==="OPA"?"본장 확인 전 — 아직 매수 추천이 아닙니다.":`반대 근거 · ${stock.foreign<0?"외국인 순매도 지속":"거래량 회복 미확인"}`}</p><div className="candidate-actions"><button onClick={()=>choose(stock)}>분석 보기</button><button onClick={()=>startObservation(stock)}>{isObserved?"관찰 중 · 보기":"관찰 시작"}</button></div>
         </article>
       })}</div>
       {!candidateStocks.length&&<div className="candidate-empty">현재 조건을 충족한 관찰 후보가 없습니다.<small>기준을 낮추지 않고 다음 갱신을 기다립니다.</small></div>}<small className="candidate-note">후보 점수는 기대수익률이나 상승 확률이 아닌 관찰 우선순위입니다.</small>

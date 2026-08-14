@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateCciEma, configured, isUsPreMarket, normalizeFlow, normalizeInvestorEstimate, normalizeInvestorQuantity, normalizeOverseasPrice, normalizePreMarket, normalizePreMarketOverseasPrice, normalizePrice, normalizePublicUsIndices, normalizeRank, resetLeaderFlows, selectCandidateStrategies } from "./kis.mjs";
+import { calculateCciEma, configured, isUsPreMarket, normalizeFlow, normalizeInvestorEstimate, normalizeInvestorQuantity, normalizeOpeningQuote, normalizeOverseasPrice, normalizePreMarket, normalizePreMarketOverseasPrice, normalizePrice, normalizePublicUsIndices, normalizeRank, resetLeaderFlows, selectCandidateStrategies } from "./kis.mjs";
 
 test("키가 없으면 실데이터로 표시하지 않는다", () => assert.equal(configured({}), false));
 test("시간대별 투자자 수급은 최신 누적값만 쓰고 프로그램도 최신 행을 쓴다", () => assert.deepEqual(normalizeFlow([{frgn_ntby_tr_pbmn:"-726500",prsn_ntby_tr_pbmn:"388600",orgn_ntby_tr_pbmn:"316600"},{frgn_ntby_tr_pbmn:"-716800",prsn_ntby_tr_pbmn:"398600",orgn_ntby_tr_pbmn:"296700"}],[{bsop_hour:"113700",whol_smtn_ntby_tr_pbmn:"-860"}]),{snapshot:{foreign:-726500,personal:388600,institution:316600,program:-860},programPoints:[{time:"11:37",value:-860}],investorAvailable:true}));
 test("NXT에서 투자자 값이 비어 있으면 0이 아닌 미제공 상태로 구분한다", () => assert.equal(normalizeFlow([{frgn_ntby_tr_pbmn:"",prsn_ntby_tr_pbmn:"",orgn_ntby_tr_pbmn:""}],[]).investorAvailable,false));
 test("NXT에서 투자자 값이 문자열 0이어도 미제공 상태로 구분한다", () => assert.equal(normalizeFlow([{frgn_ntby_tr_pbmn:"0",prsn_ntby_tr_pbmn:"0",orgn_ntby_tr_pbmn:"0"}],[]).investorAvailable,false));
 test("대표 종목 시세를 숫자로 정규화한다", () => assert.deepEqual(normalizePrice({stck_prpr:"72,300",prdy_ctrt:"-1.40"}),{price:72300,changeRate:-1.4,twentyDay:0}));
+test("NXT와 KRX 예상체결을 서로 다른 필드로 보존한다",()=>assert.deepEqual(normalizeOpeningQuote({stck_prpr:"10,200",prdy_ctrt:"2",acml_tr_pbmn:"3000000000"},{askp1:"10250",bidp1:"10150",total_askp_rsqn:"100",total_bidp_rsqn:"200"},{antc_cnpr:"10180",antc_vol:"300"}),{nxtPrice:10200,nxtChangeRate:2,nxtAmount:3000000000,nxtSpread:100/10200*100,nxtAskQuantity:100,nxtBidQuantity:200,auctionPrice:10180,auctionVolume:300,auctionAskQuantity:0,auctionBidQuantity:0}));
 test("해외 종목 시세를 숫자로 정규화한다", () => assert.deepEqual(normalizeOverseasPrice({last:"136.5500",rate:"+3.39"}),{price:136.55,changeRate:3.39,twentyDay:0}));
 test("프리장에는 정규장 종가와 프리장 등락률을 분리한다", () => assert.deepEqual(normalizePreMarketOverseasPrice({base:"130",last:"131.82"},[{clos:"130",rate:"-7.31"}]),{price:130,changeRate:-7.31,preMarketPrice:131.82,preMarketChangeRate:1.4,twentyDay:0}));
 test("미국 프리장 시간만 분리 조회한다", () => {assert.equal(isUsPreMarket(new Date("2026-08-11T10:00:00Z")),true);assert.equal(isUsPreMarket(new Date("2026-08-11T14:00:00Z")),false)});
